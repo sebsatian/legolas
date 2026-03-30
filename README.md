@@ -31,6 +31,39 @@ Para ver logs:
 docker compose logs -f
 ```
 
+## Cloudflare DDNS opcional
+
+El `docker-compose.yml` incluye un servicio `cloudflare-ddns` para actualizar automáticamente el DNS en Cloudflare cuando el ISP cambie tu IP pública.
+
+### 1. Crear tu archivo local de variables
+
+```bash
+cp .env.example .env
+```
+
+Edita `.env` y pega tu token:
+
+```env
+CLOUDFLARE_API_TOKEN=pega_aqui_tu_token
+CLOUDFLARE_DDNS_DOMAINS=legolas.cl,www.legolas.cl
+CLOUDFLARE_DDNS_PROXIED=true
+CLOUDFLARE_DDNS_IP6_PROVIDER=none
+```
+
+### 2. Levantar la app + DDNS
+
+```bash
+docker compose --profile ddns up -d --build
+```
+
+### 3. Revisar que el updater arrancó bien
+
+```bash
+docker compose logs -f cloudflare-ddns
+```
+
+> El perfil `ddns` es opcional, así que tu despliegue local normal sigue funcionando aunque no tengas el token configurado.
+
 Para bajar la demo:
 
 ```bash

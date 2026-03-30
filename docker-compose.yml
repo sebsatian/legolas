@@ -14,3 +14,19 @@ services:
       retries: 3
       start_period: 10s
     restart: unless-stopped
+
+  cloudflare-ddns:
+    image: favonia/cloudflare-ddns:1
+    container_name: visionplay-cloudflare-ddns
+    profiles: ["ddns"]
+    network_mode: host
+    restart: unless-stopped
+    read_only: true
+    cap_drop: ["all"]
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      CLOUDFLARE_API_TOKEN: ${CLOUDFLARE_API_TOKEN:-}
+      DOMAINS: ${CLOUDFLARE_DDNS_DOMAINS:-legolas.cl,www.legolas.cl}
+      PROXIED: ${CLOUDFLARE_DDNS_PROXIED:-true}
+      IP6_PROVIDER: ${CLOUDFLARE_DDNS_IP6_PROVIDER:-none}
