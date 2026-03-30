@@ -220,18 +220,23 @@ export default function App() {
   }, [view, restActive, config.sessionDuration])
 
   // ── rest timer ──
+  function endRestPeriod() {
+    setRestActive(false)
+    setPairIdx(i => {
+      const pairs = pairsFor(levelRef.current)
+      return (i + 1) % Math.max(pairs.length, 1)
+    })
+    setShowHint(false)
+    setRestTime(0)
+  }
+
   useEffect(() => {
     if (!restActive) return
     const id = setInterval(() => {
       setRestTime(t => {
         if (t <= 1) {
           clearInterval(id)
-          setRestActive(false)
-          setPairIdx(i => {
-            const pairs = pairsFor(levelRef.current)
-            return (i + 1) % Math.max(pairs.length, 1)
-          })
-          setShowHint(false)
+          endRestPeriod()
           return 0
         }
         return t - 1
@@ -314,7 +319,7 @@ export default function App() {
       `}</style>
 
       {view === 'home'     && <HomeView config={config} progress={progress} onStart={startSession} onProgress={() => setView('progress')} onSettings={() => setView('settings')} />}
-      {view === 'exercise' && <ExerciseView lv={lv} remaining={Math.max(totalT - sessionTime, 0)} totalT={totalT} sessionTime={sessionTime} fusions={fusions} level={level} pair={pair} restActive={restActive} restTime={restTime} restDuration={config.restDuration} showHint={showHint} celebrate={celebrate} onFusion={handleFusion} onToggleHint={() => setShowHint(h => !h)} onEnd={finishSession} />}
+      {view === 'exercise' && <ExerciseView lv={lv} remaining={Math.max(totalT - sessionTime, 0)} totalT={totalT} sessionTime={sessionTime} fusions={fusions} level={level} pair={pair} restActive={restActive} restTime={restTime} restDuration={config.restDuration} showHint={showHint} celebrate={celebrate} onFusion={handleFusion} onToggleHint={() => setShowHint(h => !h)} onEnd={finishSession} onSkipRest={endRestPeriod} />}
       {view === 'complete' && <CompleteView fusions={fusionsRef.current} duration={sessionTimeRef.current} maxLevel={maxLevelRef.current} streak={progress.streak} onHome={() => setView('home')} onProgress={() => setView('progress')} />}
       {view === 'progress' && <ProgressView progress={progress} onBack={() => setView('home')} />}
       {view === 'settings' && <SettingsView config={config} onSave={setConfig} onBack={() => setView('home')} onReset={() => setProgress(DEFAULT_PROGRESS)} />}
@@ -388,12 +393,12 @@ function HomeView({ config, progress, onStart, onProgress, onSettings }: {
 // ─── EXERCISE ────────────────────────────────────────────────
 function ExerciseView({ lv, remaining, totalT, sessionTime, fusions, level, pair,
   restActive, restTime, restDuration, showHint, celebrate,
-  onFusion, onToggleHint, onEnd }: {
+  onFusion, onToggleHint, onEnd, onSkipRest }: {
   lv: { level: number; gap: number; size: number }; remaining: number; totalT: number
   sessionTime: number; fusions: number; level: number; pair: StereoPair
   restActive: boolean; restTime: number; restDuration: number
   showHint: boolean; celebrate: boolean
-  onFusion: () => void; onToggleHint: () => void; onEnd: () => void
+  onFusion: () => void; onToggleHint: () => void; onEnd: () => void; onSkipRest: () => void
 }) {
   return (
     <div className="min-h-screen flex flex-col bg-white">
@@ -425,7 +430,7 @@ function ExerciseView({ lv, remaining, totalT, sessionTime, fusions, level, pair
       {/* Main exercise area — ALWAYS white background */}
       <div className="flex-1 flex flex-col items-center justify-center bg-white gap-6 px-4 py-6 relative overflow-hidden">
         {restActive ? (
-          <RestScreen restTime={restTime} restDuration={restDuration} hint={pair.hint} />
+          <RestScreen restTime={restTime} restDuration={restDuration} hint={pair.hint} onSkip={onSkipRest} />
         ) : (
           <>
             <p className="text-gray-400 font-semibold text-sm text-center max-w-xs leading-relaxed">
@@ -491,7 +496,7 @@ function ExerciseView({ lv, remaining, totalT, sessionTime, fusions, level, pair
 }
 
 // ─── REST SCREEN ─────────────────────────────────────────────
-function RestScreen({ restTime, restDuration, hint }: { restTime: number; restDuration: number; hint: string }) {
+function RestScreen({ restTime, restDuration, hint, onSkip }: { restTime: number; restDuration: number; hint: string; onSkip: () => void }) {
   const r = 42, circ = 2 * Math.PI * r
   const pct = (restDuration - restTime) / restDuration
   return (
@@ -514,6 +519,12 @@ function RestScreen({ restTime, restDuration, hint }: { restTime: number; restDu
         <p className="text-emerald-600 font-bold text-sm">Deberías haber visto:</p>
         <p className="text-emerald-700 font-black text-base mt-1">{hint}</p>
       </div>
+      <button
+        onClick={onSkip}
+        className="btn bg-white border border-emerald-200 text-emerald-600 font-black rounded-2xl px-4 py-2.5 shadow-sm hover:bg-emerald-50 transition-all"
+      >
+        ⏭️ Saltar descanso (dev)
+      </button>
     </div>
   )
 }
