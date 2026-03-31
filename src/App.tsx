@@ -625,8 +625,8 @@ function PursuitView({ remaining,totalT,sessionTime,fusions,level,pxPerCm,celebr
   const [tgt,setTgt]  = useState({ x:50,y:50 })
   const [cur,setCur]  = useState({ x:-50,y:-50 })
   const [tracking,setTracking] = useState(false)
-  const animRef = useRef<number>(); const t0Ref = useRef(Date.now())
-  const sampleRef = useRef(0); const SAMPLE_EVERY = 120 // ms
+  const animRef = useRef<number>(0); const t0Ref = useRef(Date.now())
+  const SAMPLE_EVERY = 120 // ms
 
   useEffect(()=>{
     t0Ref.current = Date.now()
@@ -689,7 +689,6 @@ function GaborView({ remaining,totalT,sessionTime,fusions,level,pxPerCm,misses,c
   const orientRef = useRef<'left'|'right'>('left')
   const [answered,setAnswered] = useState<'left'|'right'|null>(null)
   const [wasCorrect,setWasCorrect] = useState<boolean|null>(null)
-  const [showNext,setShowNext] = useState(true)
   const accuracy = fusions+misses>0 ? Math.round(fusions/(fusions+misses)*100) : 100
   const canvasPx  = Math.max(Math.round(Math.min(pxPerCm*5, 260)), 140)
 
@@ -718,7 +717,7 @@ function GaborView({ remaining,totalT,sessionTime,fusions,level,pxPerCm,misses,c
 
   function newTrial() {
     orientRef.current = Math.random()>0.5 ? 'left' : 'right'
-    setAnswered(null); setWasCorrect(null); setShowNext(false)
+    setAnswered(null); setWasCorrect(null)
     setTimeout(drawGabor, 50)
   }
 
@@ -727,7 +726,7 @@ function GaborView({ remaining,totalT,sessionTime,fusions,level,pxPerCm,misses,c
   function answer(a:'left'|'right') {
     if (answered) return
     const correct = a===orientRef.current
-    setAnswered(a); setWasCorrect(correct); setShowNext(true)
+    setAnswered(a); setWasCorrect(correct)
     if (correct) onHit(); else onMiss()
     setTimeout(newTrial, 900)
   }
