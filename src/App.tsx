@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 
 // ─── TYPES ───────────────────────────────────────────────────
 type View = 'calibration' | 'home' | 'exercise' | 'anaglyph' | 'saccadic' | 'complete' | 'progress' | 'settings' | 'glasses-info'
@@ -27,14 +27,18 @@ const DEFAULT_CONFIG: Config = {
 const DEFAULT_PROGRESS: Progress = { currentLevel: 1, streak: 0, lastSessionDate: null, sessions: [] }
 
 // ─── LEVELS ──────────────────────────────────────────────────
-const STEREO_LEVELS  = [{ gap: 32, size: 178 }, { gap: 52, size: 160 }, { gap: 72, size: 142 }, { gap: 92, size: 126 }, { gap: 112, size: 110 }]
-const ANAGLYPH_SIZES = [220, 200, 180, 160, 140]
+// Physical sizes in centimeters — scaled to px at runtime using pxPerCm
+// Stereo: gap between images / image size
+const STEREO_CM   = [{ gap: 1.5, size: 6.0 }, { gap: 2.5, size: 5.5 }, { gap: 3.5, size: 5.0 }, { gap: 4.5, size: 4.5 }, { gap: 5.5, size: 4.0 }]
+// Anaglyph: single image diameter
+const ANAGLYPH_CM = [8.0, 7.0, 6.0, 5.0, 4.5]
+// Saccadic: target diameter + reaction window
 const SACCADIC_LEVELS = [
-  { targetPx: 72, windowMs: 3000, label: 'Grande, lento' },
-  { targetPx: 58, windowMs: 2500, label: 'Medio, normal' },
-  { targetPx: 46, windowMs: 2000, label: 'Medio, rapido' },
-  { targetPx: 34, windowMs: 1500, label: 'Pequeño, rapido' },
-  { targetPx: 24, windowMs: 1000, label: 'Pequeño, muy rapido' },
+  { targetCm: 2.0, windowMs: 3000, label: 'Grande, lento' },
+  { targetCm: 1.5, windowMs: 2500, label: 'Medio, normal' },
+  { targetCm: 1.1, windowMs: 2000, label: 'Medio, rapido' },
+  { targetCm: 0.8, windowMs: 1500, label: 'Pequeño, rapido' },
+  { targetCm: 0.6, windowMs: 1000, label: 'Pequeño, muy rapido' },
 ]
 
 // ─── STEREO PAIRS ────────────────────────────────────────────
@@ -73,7 +77,6 @@ const load = <T,>(key: string, def: T): T => {
 }
 const save = (key: string, v: unknown) => localStorage.setItem(key, JSON.stringify(v))
 const fmt  = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`
-const lv   = (l: number) => STEREO_LEVELS[Math.min(l - 1, 4)]
 const pairs = (l: number) => PAIRS.filter(p => p.minLevel <= l)
 const colorize = (svg: string, color: string) =>
   svg.replace(/stroke="#111"/g, `stroke="${color}"`).replace(/fill="#111"/g, `fill="${color}"`)
@@ -217,10 +220,19 @@ export default function App() {
     setView('complete')
   }
 
+  // ── physical calibration ──
+  // Uses CSS pixels (already DPI-independent) for sizing
+  const pxPerCm = useMemo(() => {
+    const diagPx = Math.sqrt(window.screen.width ** 2 + window.screen.height ** 2)
+    const diagCm = config.screenInches * 2.54
+    return Math.round((diagPx / diagCm) * 10) / 10  // 1 decimal
+  }, [config.screenInches])
+
   const availPairs  = pairs(level)
   const currentPair = availPairs[pairIdx % Math.max(availPairs.length, 1)] ?? PAIRS[0]
-  const stereoLv    = lv(level)
-  const totalT      = config.sessionDuration * 60
+  const cmLv     = STEREO_CM[Math.min(level - 1, 4)]
+  const stereoLv = { gap: Math.round(cmLv.gap * pxPerCm), size: Math.round(cmLv.size * pxPerCm) }
+  const totalT   = config.sessionDuration * 60
 
   return (
     <div style={{ fontFamily: "'Nunito', sans-serif" }}>
@@ -246,8 +258,8 @@ export default function App() {
       {view === 'home'         && <HomeView config={config} progress={progress} onStart={startSession} onProgress={() => setView('progress')} onSettings={() => setView('settings')} onGlassesInfo={() => setView('glasses-info')} />}
       {view === 'glasses-info' && <GlassesInfoView pair={PAIRS[0]} onBack={() => setView('home')} onStart={() => startSession('anaglyph')} />}
       {view === 'exercise'     && <StereoView stereoLv={stereoLv} remaining={Math.max(totalT - sessionTime, 0)} totalT={totalT} sessionTime={sessionTime} fusions={fusions} level={level} pair={currentPair} restActive={restActive} restTime={restTime} restDuration={config.restDuration} showHint={showHint} celebrate={celebrate} onFusion={handleFusion} onToggleHint={() => setShowHint(h => !h)} onEnd={finishSession} onSkipRest={endRest} />}
-      {view === 'anaglyph'     && <AnaglyphView config={config} level={level} pair={currentPair} remaining={Math.max(totalT - sessionTime, 0)} totalT={totalT} sessionTime={sessionTime} fusions={fusions} restActive={restActive} restTime={restTime} restDuration={config.restDuration} showHint={showHint} celebrate={celebrate} onFusion={handleFusion} onToggleHint={() => setShowHint(h => !h)} onEnd={finishSession} onSkipRest={endRest} />}
-      {view === 'saccadic'     && <SaccadicView config={config} level={level} hits={fusions} misses={missCount} remaining={Math.max(totalT - sessionTime, 0)} totalT={totalT} sessionTime={sessionTime} celebrate={celebrate} onHit={handleSaccadicHit} onMiss={handleSaccadicMiss} onEnd={finishSession} />}
+      {view === 'anaglyph'     && <AnaglyphView config={config} pxPerCm={pxPerCm} level={level} pair={currentPair} remaining={Math.max(totalT - sessionTime, 0)} totalT={totalT} sessionTime={sessionTime} fusions={fusions} restActive={restActive} restTime={restTime} restDuration={config.restDuration} showHint={showHint} celebrate={celebrate} onFusion={handleFusion} onToggleHint={() => setShowHint(h => !h)} onEnd={finishSession} onSkipRest={endRest} />}
+      {view === 'saccadic'     && <SaccadicView config={config} pxPerCm={pxPerCm} level={level} hits={fusions} misses={missCount} remaining={Math.max(totalT - sessionTime, 0)} totalT={totalT} sessionTime={sessionTime} celebrate={celebrate} onHit={handleSaccadicHit} onMiss={handleSaccadicMiss} onEnd={finishSession} />}
       {view === 'complete'     && <CompleteView sessions={progress.sessions} streak={progress.streak} mode={activeModeRef.current} onHome={() => setView('home')} onProgress={() => setView('progress')} />}
       {view === 'progress'     && <ProgressView progress={progress} onBack={() => setView('home')} />}
       {view === 'settings'     && <SettingsView config={config} onSave={setConfig} onBack={() => setView('home')} onReset={() => setProgress(DEFAULT_PROGRESS)} onCalibrate={() => setView('calibration')} />}
@@ -509,12 +521,12 @@ function StereoView({ stereoLv, remaining, totalT, sessionTime, fusions, level, 
 }
 
 // ─── ANAGLYPH EXERCISE ───────────────────────────────────────
-function AnaglyphView({ config, level, pair, remaining, totalT, sessionTime, fusions, restActive, restTime, restDuration, showHint, celebrate, onFusion, onToggleHint, onEnd, onSkipRest }: {
-  config: Config; level: number; pair: StereoPair; remaining: number; totalT: number; sessionTime: number; fusions: number
+function AnaglyphView({ config, pxPerCm, level, pair, remaining, totalT, sessionTime, fusions, restActive, restTime, restDuration, showHint, celebrate, onFusion, onToggleHint, onEnd, onSkipRest }: {
+  config: Config; pxPerCm: number; level: number; pair: StereoPair; remaining: number; totalT: number; sessionTime: number; fusions: number
   restActive: boolean; restTime: number; restDuration: number; showHint: boolean; celebrate: boolean
   onFusion: () => void; onToggleHint: () => void; onEnd: () => void; onSkipRest: () => void
 }) {
-  const size = ANAGLYPH_SIZES[Math.min(level - 1, 4)]
+  const size = Math.round(ANAGLYPH_CM[Math.min(level - 1, 4)] * pxPerCm)
   return (
     <div className="min-h-screen flex flex-col bg-white">
       <div className="px-4 py-3 flex items-center gap-3 shadow-sm border-b border-gray-100" style={{ background: 'linear-gradient(90deg,#fff1f0,#ecfeff)' }}>
@@ -556,11 +568,12 @@ function AnaglyphView({ config, level, pair, remaining, totalT, sessionTime, fus
 }
 
 // ─── SACCADIC EXERCISE ───────────────────────────────────────
-function SaccadicView({ config, level, hits, misses, remaining, totalT, sessionTime, celebrate, onHit, onMiss, onEnd }: {
-  config: Config; level: number; hits: number; misses: number; remaining: number; totalT: number; sessionTime: number; celebrate: boolean
+function SaccadicView({ config, pxPerCm, level, hits, misses, remaining, totalT, sessionTime, celebrate, onHit, onMiss, onEnd }: {
+  config: Config; pxPerCm: number; level: number; hits: number; misses: number; remaining: number; totalT: number; sessionTime: number; celebrate: boolean
   onHit: (rt: number) => void; onMiss: () => void; onEnd: () => void
 }) {
-  const lvCfg = SACCADIC_LEVELS[Math.min(level - 1, 4)]
+  const lvCfg    = SACCADIC_LEVELS[Math.min(level - 1, 4)]
+  const targetPx = Math.max(Math.round(lvCfg.targetCm * pxPerCm), 18) // min 18px safety floor
   const [pos, setPos] = useState({ x: 50, y: 50 })
   const [visible, setVisible] = useState(false)
   const [flash, setFlash] = useState(false)
@@ -629,14 +642,14 @@ function SaccadicView({ config, level, hits, misses, remaining, totalT, sessionT
             className="absolute flex items-center justify-center rounded-full font-black text-white transition-none"
             style={{
               left: `${pos.x}%`, top: `${pos.y}%`,
-              width: lvCfg.targetPx, height: lvCfg.targetPx,
+              width: targetPx, height: targetPx,
               transform: 'translate(-50%, -50%)',
               background: 'linear-gradient(135deg,#f97316,#eab308)',
               boxShadow: '0 4px 20px rgba(249,115,22,0.55)',
               animation: 'pulse 0.6s ease infinite',
-              fontSize: Math.max(lvCfg.targetPx * 0.35, 12),
+              fontSize: Math.max(targetPx * 0.35, 12),
             }}>
-            {lvCfg.targetPx >= 40 ? '!' : ''}
+            {targetPx >= 40 ? '!' : ''}
           </button>
         )}
 
@@ -656,7 +669,7 @@ function SaccadicView({ config, level, hits, misses, remaining, totalT, sessionT
       </div>
 
       <div className="px-6 py-2.5 text-center border-t border-gray-100" style={{ background: 'linear-gradient(90deg,#fff7ed,#fef9c3)' }}>
-        <p className="text-xs font-bold text-amber-400">Tiempo de reaccion objetivo: {(lvCfg.windowMs / 1000).toFixed(1)}s · Pantalla {config.screenInches}"</p>
+        <p className="text-xs font-bold text-amber-400">Ventana: {(lvCfg.windowMs/1000).toFixed(1)}s · Target: {lvCfg.targetCm}cm ({targetPx}px) · {pxPerCm.toFixed(1)}px/cm · Pantalla {config.screenInches}"</p>
       </div>
     </div>
   )
