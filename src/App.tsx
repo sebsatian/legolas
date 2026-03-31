@@ -305,7 +305,7 @@ export default function App() {
       {view==='exercise'     && <StereoView {...sharedEx} stereoLv={stereoLv} pair={curPair} restActive={restActive} restTime={restTime} restDuration={config.restDuration} showHint={showHint} celebrate={celebrate} consDisplay={consDisplay} onFusion={handleFusion} onNoFusion={handleNoFusion} onToggleHint={()=>setShowHint(h=>!h)} onEnd={finishSession} onSkipRest={endRest} />}
       {view==='anaglyph'     && <AnaglyphView {...sharedEx} config={config} pair={curPair} restActive={restActive} restTime={restTime} restDuration={config.restDuration} showHint={showHint} celebrate={celebrate} consDisplay={consDisplay} contrastMsg={contrastMsg} onFusion={handleFusion} onNoFusion={handleNoFusion} onToggleHint={()=>setShowHint(h=>!h)} onEnd={finishSession} onSkipRest={endRest} />}
       {view==='saccadic'     && <SaccadicView {...sharedEx} config={config} pxPerCm={pxPerCm} misses={missCount} celebrate={celebrate} onHit={handleSaccadicHit} onMiss={handleSaccadicMiss} onEnd={finishSession} />}
-      {view==='pursuit'      && <PursuitView  {...sharedEx} pxPerCm={pxPerCm} celebrate={celebrate} onSample={handlePursuitSample} onEnd={finishSession} />}
+      {view==='pursuit'      && <PursuitView  {...sharedEx} pxPerCm={pxPerCm} onSample={handlePursuitSample} onEnd={finishSession} />}
       {view==='gabor'        && <GaborView    {...sharedEx} pxPerCm={pxPerCm} misses={missCount} consDisplay={consDisplay} celebrate={celebrate} onHit={handleGaborHit} onMiss={handleGaborMiss} onEnd={finishSession} />}
       {view==='hart'         && <HartView     {...sharedEx} pxPerCm={pxPerCm} misses={missCount} celebrate={celebrate} onHit={handleHartHit} onMiss={handleHartMiss} onEnd={finishSession} />}
       {view==='complete'     && <CompleteView sessions={progress.sessions} streak={progress.streak} mode={activeModeRef.current} onHome={()=>setView('home')} onProgress={()=>setView('progress')} />}
@@ -620,63 +620,114 @@ function SaccadicView({ remaining,totalT,sessionTime,fusions,level,config,pxPerC
 }
 
 // ─── SMOOTH PURSUIT ──────────────────────────────────────────
-function PursuitView({ remaining,totalT,sessionTime,fusions,level,pxPerCm,celebrate,onSample,onEnd }:ExShared&{ pxPerCm:number; celebrate:boolean; onSample:(err:number)=>void; onEnd:()=>void }) {
-  const pat = PURSUIT_PATTERNS[Math.min(level-1,4)]
-  const [tgt,setTgt]  = useState({ x:50,y:50 })
-  const [cur,setCur]  = useState({ x:-50,y:-50 })
-  const [tracking,setTracking] = useState(false)
-  const animRef = useRef<number>(0); const t0Ref = useRef(Date.now())
-  const SAMPLE_EVERY = 120 // ms
+const PURSUIT_THRESHOLD = 9 // % of screen — "on target" if within this radius
 
+function PursuitView({ remaining,totalT,sessionTime,level,pxPerCm,onSample,onEnd }:ExShared&{ pxPerCm:number; onSample:(err:number)=>void; onEnd:()=>void }) {
+  const pat = PURSUIT_PATTERNS[Math.min(level-1,4)]
+
+  // Use refs for positions so interval closure is always current
+  const tgtRef      = useRef({ x:50, y:50 })
+  const curRef      = useRef({ x:-999, y:-999 })
+  const trackingRef = useRef(false)
+  const t0Ref       = useRef(Date.now())
+  const animRef     = useRef(0)
+
+  // Sampling stats (refs = no stale closure)
+  const totalRef    = useRef(0)
+  const onTgtRef    = useRef(0)
+
+  // Display state — only updated from interval, not from rAF
+  const [tgtDisplay, setTgtDisplay] = useState({ x:50, y:50 })
+  const [curDisplay, setCurDisplay] = useState({ x:-999, y:-999 })
+  const [tracking, setTracking]     = useState(false)
+  const [accuracy, setAccuracy]     = useState(0)
+  const [onTarget, setOnTarget]     = useState(false)
+
+  // rAF: move target
   useEffect(()=>{
     t0Ref.current = Date.now()
-    function frame() { setTgt(pat.fn((Date.now()-t0Ref.current)/1000)); animRef.current=requestAnimationFrame(frame) }
+    totalRef.current = 0; onTgtRef.current = 0
+    function frame() {
+      const pos = pat.fn((Date.now()-t0Ref.current)/1000)
+      tgtRef.current = pos
+      setTgtDisplay({...pos})
+      animRef.current = requestAnimationFrame(frame)
+    }
     animRef.current = requestAnimationFrame(frame)
-    return ()=>{ if(animRef.current) cancelAnimationFrame(animRef.current) }
+    return ()=>cancelAnimationFrame(animRef.current)
   },[level])
 
+  // Stable sampling interval — only depends on level (not on state)
   useEffect(()=>{
-    if (!tracking) return
     const id = setInterval(()=>{
-      const dx=cur.x-tgt.x, dy=cur.y-tgt.y
-      onSample(Math.sqrt(dx*dx+dy*dy))
-    }, SAMPLE_EVERY)
+      if (!trackingRef.current) return
+      const dx = curRef.current.x - tgtRef.current.x
+      const dy = curRef.current.y - tgtRef.current.y
+      const err = Math.sqrt(dx*dx + dy*dy)
+      totalRef.current += 1
+      const hit = err < PURSUIT_THRESHOLD
+      if (hit) onTgtRef.current += 1
+      setOnTarget(hit)
+      const acc = Math.round((onTgtRef.current / totalRef.current) * 100)
+      setAccuracy(acc)
+      onSample(err)
+    }, 200)
     return ()=>clearInterval(id)
-  },[tracking,cur,tgt])
-
-  const targetPx = Math.max(Math.round(1.3*pxPerCm), 22)
+  },[level])
 
   function handlePointerMove(e:React.PointerEvent<HTMLDivElement>) {
-    if (!tracking) return
     const r = e.currentTarget.getBoundingClientRect()
-    setCur({ x:((e.clientX-r.left)/r.width)*100, y:((e.clientY-r.top)/r.height)*100 })
+    const pos = { x:((e.clientX-r.left)/r.width)*100, y:((e.clientY-r.top)/r.height)*100 }
+    curRef.current = pos
+    setCurDisplay({...pos})
+  }
+  function handlePointerDown(e:React.PointerEvent<HTMLDivElement>) {
+    trackingRef.current = true; setTracking(true)
+    handlePointerMove(e)
   }
 
-  const accuracy = fusions > 0 ? fusions : 0  // fusions = accuracy% display from parent
+  const targetPx = Math.max(Math.round(1.3*pxPerCm), 22)
+  const threshPx = Math.round(PURSUIT_THRESHOLD / 100 * Math.min(window.innerWidth, window.innerHeight))
+  const accColor = accuracy >= 70 ? '#10b981' : accuracy >= 40 ? '#f97316' : '#ef4444'
 
   return (
     <div className="min-h-screen flex flex-col bg-white">
       <TopBar color="#8b5cf6" remaining={remaining} sessionTime={sessionTime} totalT={totalT} onEnd={onEnd} bg="linear-gradient(90deg,#8b5cf6,#06b6d4)"/>
-      <StatsRow left={<><span className="text-2xl font-black text-violet-500">{accuracy}%</span><p className="text-xs text-gray-400 font-bold">Precision</p></>} center={<><span className="text-sm font-black text-violet-400">Nv {level}</span><p className="text-xs text-gray-400 font-bold">{pat.lbl}</p></>} right={<span className="text-xs font-bold text-gray-400">{tracking?'Siguiendo...':'Activa el cursor'}</span>} />
-      <div className="flex-1 relative bg-white overflow-hidden cursor-crosshair"
+      <StatsRow
+        left={<><span className="text-2xl font-black" style={{ color:accColor }}>{tracking ? `${accuracy}%` : '--'}</span><p className="text-xs text-gray-400 font-bold">Precision</p></>}
+        center={<><span className="text-sm font-black text-violet-400">Nv {level}</span><p className="text-xs text-gray-400 font-bold">{pat.lbl}</p></>}
+        right={<><div className="w-4 h-4 rounded-full mx-auto" style={{ background: tracking ? (onTarget?'#10b981':'#ef4444') : '#e5e7eb' }}/><p className="text-xs text-gray-400 font-bold">{tracking?(onTarget?'En zona':'Fuera'):'Inactivo'}</p></>}
+      />
+      <div className="flex-1 relative bg-white overflow-hidden cursor-crosshair select-none"
         onPointerMove={handlePointerMove}
-        onPointerDown={()=>setTracking(true)}
+        onPointerDown={handlePointerDown}
         style={{ touchAction:'none' }}>
-        {/* Target */}
-        <div className="absolute pointer-events-none transition-none" style={{ left:`${tgt.x}%`,top:`${tgt.y}%`,transform:'translate(-50%,-50%)',width:targetPx,height:targetPx,borderRadius:'50%',background:'linear-gradient(135deg,#8b5cf6,#06b6d4)',boxShadow:'0 4px 20px rgba(139,92,246,0.5)',animation:'pulse 1s ease infinite' }}/>
-        {/* Cursor indicator */}
-        {tracking && <div className="absolute pointer-events-none" style={{ left:`${cur.x}%`,top:`${cur.y}%`,transform:'translate(-50%,-50%)',width:14,height:14,borderRadius:'50%',border:'2px solid #8b5cf6',background:'rgba(139,92,246,0.2)' }}/>}
-        {/* Line from cursor to target */}
+
+        {/* Threshold ring around target */}
+        <div className="absolute pointer-events-none" style={{ left:`${tgtDisplay.x}%`,top:`${tgtDisplay.y}%`,transform:'translate(-50%,-50%)',width:threshPx*2,height:threshPx*2,borderRadius:'50%',border:`2px dashed ${onTarget&&tracking?'rgba(16,185,129,0.4)':'rgba(139,92,246,0.18)'}`,transition:'border-color 0.2s' }}/>
+
+        {/* Target dot */}
+        <div className="absolute pointer-events-none" style={{ left:`${tgtDisplay.x}%`,top:`${tgtDisplay.y}%`,transform:'translate(-50%,-50%)',width:targetPx,height:targetPx,borderRadius:'50%',background:'linear-gradient(135deg,#8b5cf6,#06b6d4)',boxShadow:`0 4px 20px rgba(139,92,246,${tracking&&onTarget?0.8:0.4})`,animation:'pulse 1s ease infinite',transition:'box-shadow 0.15s' }}/>
+
+        {/* Cursor ring */}
+        {tracking && <div className="absolute pointer-events-none" style={{ left:`${curDisplay.x}%`,top:`${curDisplay.y}%`,transform:'translate(-50%,-50%)',width:18,height:18,borderRadius:'50%',border:`2.5px solid ${onTarget?'#10b981':'#8b5cf6'}`,background:'rgba(139,92,246,0.12)',transition:'border-color 0.15s' }}/>}
+
+        {/* Dashed line cursor → target */}
         {tracking && (
-          <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ opacity:0.2 }}>
-            <line x1={`${cur.x}%`} y1={`${cur.y}%`} x2={`${tgt.x}%`} y2={`${tgt.y}%`} stroke="#8b5cf6" strokeWidth="2" strokeDasharray="4"/>
+          <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ opacity:0.15 }}>
+            <line x1={`${curDisplay.x}%`} y1={`${curDisplay.y}%`} x2={`${tgtDisplay.x}%`} y2={`${tgtDisplay.y}%`} stroke="#8b5cf6" strokeWidth="2" strokeDasharray="5 4"/>
           </svg>
         )}
-        {!tracking && <div className="absolute inset-0 flex items-center justify-center pointer-events-none"><p className="text-gray-300 font-black text-lg text-center px-8">Toca la pantalla y sigue el objeto morado con el cursor</p></div>}
-        {celebrate && <div className="absolute inset-0 flex items-center justify-center pointer-events-none"><span className="text-5xl" style={{ animation:'pop 0.4s ease' }}>🎯</span></div>}
+
+        {!tracking && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none gap-3">
+            <p className="text-gray-300 font-black text-lg text-center px-8">Toca la pantalla<br/>y sigue el objeto morado</p>
+            <p className="text-gray-200 text-sm font-bold">Mantenlo dentro del circulo punteado</p>
+          </div>
+        )}
       </div>
       <div className="px-6 py-2 text-center border-t border-violet-100" style={{ background:'#f5f3ff' }}>
-        <p className="text-xs font-bold text-violet-400">Sigue el objeto con el cursor manteniendo la menor distancia posible · smooth pursuit training</p>
+        <p className="text-xs font-bold text-violet-400">Precision = % de tiempo dentro de la zona · umbral {PURSUIT_THRESHOLD}% pantalla ({threshPx}px)</p>
       </div>
     </div>
   )
