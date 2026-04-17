@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 
 // ─── TYPES ───────────────────────────────────────────────────
-type View = 'calibration'|'home'|'exercise'|'anaglyph'|'saccadic'|'pursuit'|'gabor'|'hart'|'complete'|'progress'|'settings'|'glasses-info'
-type ExerciseMode = 'stereo'|'anaglyph'|'saccadic'|'pursuit'|'gabor'|'hart'
+type View = 'calibration'|'home'|'exercise'|'anaglyph'|'saccadic'|'pursuit'|'gabor'|'hart'|'complete'|'progress'|'settings'|'glasses-info'|'mario'|'tetris'|'crossy'|'connect4'
+type ExerciseMode = 'stereo'|'anaglyph'|'saccadic'|'pursuit'|'gabor'|'hart'|'mario'|'tetris'|'crossy'|'connect4'
 
 interface SessionRecord {
   id:string; date:string; duration:number; fusions:number; maxLevel:number; mode:ExerciseMode
@@ -121,7 +121,7 @@ export default function App() {
 
   // Session timer
   useEffect(()=>{
-    const active = ['exercise','anaglyph','saccadic','pursuit','gabor','hart']
+    const active = ['exercise','anaglyph','saccadic','pursuit','gabor','hart','mario','tetris','crossy']
     if (!active.includes(view) || restActive) return
     const maxT = config.sessionDuration * 60
     const id = setInterval(()=>{
@@ -239,6 +239,19 @@ export default function App() {
     missRef.current += 1; setMissCount(missRef.current)
   }
 
+  // ── Juegos (Mario / Tetris / Crossy) ─────────────────────────
+  function handleGameHit(rt:number=0) {
+    hitsRef.current += 1; fusionsRef.current += 1
+    if (rt) reactionTimesRef.current.push(rt)
+    setFusions(fusionsRef.current)
+    setCelebrate(true); setTimeout(()=>setCelebrate(false),400)
+    staircaseUp()
+  }
+  function handleGameMiss() {
+    missRef.current += 1; setMissCount(missRef.current)
+    staircaseDown()
+  }
+
   function startSession(mode:ExerciseMode) {
     activeModeRef.current = mode
     const lvl = progressRef.current.currentLevel
@@ -248,7 +261,7 @@ export default function App() {
     gaborHitsRef.current=0; gaborTotalRef.current=0; sessionTimeRef.current=0
     setLevel(lvl); setFusions(0); setMissCount(0); setConsDisplay(0)
     setSessionTime(0); setPairIdx(0); setRestActive(false); setShowHint(false); setCelebrate(false); setContrastMsg(null)
-    const viewMap:Record<ExerciseMode,View> = { stereo:'exercise',anaglyph:'anaglyph',saccadic:'saccadic',pursuit:'pursuit',gabor:'gabor',hart:'hart' }
+    const viewMap:Record<ExerciseMode,View> = { stereo:'exercise',anaglyph:'anaglyph',saccadic:'saccadic',pursuit:'pursuit',gabor:'gabor',hart:'hart',mario:'mario',tetris:'tetris',crossy:'crossy',connect4:'connect4' }
     setView(viewMap[mode])
   }
 
@@ -308,6 +321,10 @@ export default function App() {
       {view==='pursuit'      && <PursuitView  {...sharedEx} pxPerCm={pxPerCm} onSample={handlePursuitSample} onEnd={finishSession} />}
       {view==='gabor'        && <GaborView    {...sharedEx} pxPerCm={pxPerCm} misses={missCount} consDisplay={consDisplay} celebrate={celebrate} onHit={handleGaborHit} onMiss={handleGaborMiss} onEnd={finishSession} />}
       {view==='hart'         && <HartView     {...sharedEx} pxPerCm={pxPerCm} misses={missCount} celebrate={celebrate} onHit={handleHartHit} onMiss={handleHartMiss} onEnd={finishSession} />}
+      {view==='mario'        && <MarioView    {...sharedEx} celebrate={celebrate} onHit={handleGameHit} onMiss={handleGameMiss} onEnd={finishSession} />}
+      {view==='tetris'       && <TetrisView   {...sharedEx} misses={missCount} onHit={()=>handleGameHit(0)} onMiss={handleGameMiss} onEnd={finishSession} />}
+      {view==='crossy'       && <CrossyView   {...sharedEx} misses={missCount} celebrate={celebrate} onHit={handleGameHit} onMiss={handleGameMiss} onEnd={finishSession} />}
+      {view==='connect4'     && <Connect4View {...sharedEx} onHit={()=>handleGameHit(0)} onMiss={handleGameMiss} onEnd={finishSession} />}
       {view==='complete'     && <CompleteView sessions={progress.sessions} streak={progress.streak} mode={activeModeRef.current} onHome={()=>setView('home')} onProgress={()=>setView('progress')} />}
       {view==='progress'     && <ProgressView progress={progress} onBack={()=>setView('home')} />}
       {view==='settings'     && <SettingsView config={config} onSave={setConfig} onBack={()=>setView('home')} onReset={()=>setProgress(DEFAULT_PROGRESS)} onCalibrate={()=>setView('calibration')} />}
@@ -379,6 +396,10 @@ function HomeView({ config, progress, onStart, onProgress, onSettings, onGlasses
     ['pursuit', '🌀','Mod A — Seguimiento',    'Smooth pursuit · seguir objeto',     'linear-gradient(135deg,#8b5cf6,#06b6d4)'],
     ['gabor',   '🔬','Mod D — Gabor',          'Aprendizaje perceptual · orientacion','linear-gradient(135deg,#10b981,#0ea5e9)'],
     ['hart',    '🔤','Mod A — Hart Chart',     'Lectura secuencial · cerca/lejos',   'linear-gradient(135deg,#ec4899,#f97316)'],
+    ['mario',   '🍄','Juego — Super Mario',   'Salta tubos rojos y verdes',          'linear-gradient(135deg,#84cc16,#ef4444)'],
+    ['tetris',  '🟥','Juego — Tetris',        'Piezas rojas y verdes · fusion',      'linear-gradient(135deg,#ef4444,#84cc16)'],
+    ['crossy',  '🐸','Juego — Crossy Road',   'Cruza sin que te atropellen',         'linear-gradient(135deg,#16a34a,#ef4444)'],
+    ['connect4','⭕','Juego — 4 en Linea',    'Conecta 4 · rojo vs verde · vs IA',   'linear-gradient(135deg,#ef4444,#84cc16)'],
   ]
   return (
     <div className="fade-up min-h-screen bg-gradient-to-br from-sky-50 via-blue-50 to-emerald-50 flex flex-col items-center justify-center p-6 gap-4">
@@ -888,6 +909,10 @@ function CompleteView({ sessions, streak, mode, onHome, onProgress }:{ sessions:
     pursuit:  { label:'Mod A Seguimiento',  bg:'linear-gradient(90deg,#8b5cf6,#06b6d4)', icon:'🌀' },
     gabor:    { label:'Mod D Gabor',        bg:'linear-gradient(90deg,#10b981,#0ea5e9)', icon:'🔬' },
     hart:     { label:'Mod A Hart Chart',   bg:'linear-gradient(90deg,#ec4899,#f97316)', icon:'🔤' },
+    mario:    { label:'Super Mario',        bg:'linear-gradient(90deg,#84cc16,#ef4444)', icon:'🍄' },
+    tetris:   { label:'Tetris',             bg:'linear-gradient(90deg,#ef4444,#84cc16)', icon:'🟥' },
+    crossy:   { label:'Crossy Road',        bg:'linear-gradient(90deg,#16a34a,#ef4444)', icon:'🐸' },
+    connect4: { label:'4 en Linea',         bg:'linear-gradient(90deg,#ef4444,#84cc16)', icon:'⭕' },
   }
   const mi = modeInfo[mode]
   const fusions=last?.fusions??0, duration=last?.duration??0, maxLevel=last?.maxLevel??1
@@ -935,9 +960,9 @@ function ProgressView({ progress, onBack }:{ progress:Progress; onBack:()=>void 
   const last14 = [...progress.sessions].slice(-14)
   const maxF   = Math.max(...last14.map(s=>s.fusions),1)
   const totalFusions = progress.sessions.reduce((a,s)=>a+s.fusions,0)
-  const modeColors:Record<ExerciseMode,string> = { stereo:'#0ea5e9',anaglyph:'linear-gradient(to top,#ef4444,#06b6d4)',saccadic:'linear-gradient(to top,#f97316,#eab308)',pursuit:'linear-gradient(to top,#8b5cf6,#06b6d4)',gabor:'linear-gradient(to top,#10b981,#0ea5e9)',hart:'linear-gradient(to top,#ec4899,#f97316)' }
-  const modeTags:Record<ExerciseMode,{bg:string;c:string;t:string}> = { stereo:{bg:'#f0f9ff',c:'#0ea5e9',t:'STE'},anaglyph:{bg:'#fff1f0',c:'#ef4444',t:'ANA'},saccadic:{bg:'#fff7ed',c:'#f97316',t:'SAC'},pursuit:{bg:'#f5f3ff',c:'#8b5cf6',t:'PUR'},gabor:{bg:'#ecfdf5',c:'#10b981',t:'GAB'},hart:{bg:'#fdf2f8',c:'#ec4899',t:'HAR'} }
-  const modes:ExerciseMode[] = ['stereo','anaglyph','saccadic','pursuit','gabor','hart']
+  const modeColors:Record<ExerciseMode,string> = { stereo:'#0ea5e9',anaglyph:'linear-gradient(to top,#ef4444,#06b6d4)',saccadic:'linear-gradient(to top,#f97316,#eab308)',pursuit:'linear-gradient(to top,#8b5cf6,#06b6d4)',gabor:'linear-gradient(to top,#10b981,#0ea5e9)',hart:'linear-gradient(to top,#ec4899,#f97316)',mario:'linear-gradient(to top,#84cc16,#ef4444)',tetris:'linear-gradient(to top,#ef4444,#84cc16)',crossy:'linear-gradient(to top,#84cc16,#ef4444)',connect4:'linear-gradient(to top,#ef4444,#84cc16)' }
+  const modeTags:Record<ExerciseMode,{bg:string;c:string;t:string}> = { stereo:{bg:'#f0f9ff',c:'#0ea5e9',t:'STE'},anaglyph:{bg:'#fff1f0',c:'#ef4444',t:'ANA'},saccadic:{bg:'#fff7ed',c:'#f97316',t:'SAC'},pursuit:{bg:'#f5f3ff',c:'#8b5cf6',t:'PUR'},gabor:{bg:'#ecfdf5',c:'#10b981',t:'GAB'},hart:{bg:'#fdf2f8',c:'#ec4899',t:'HAR'},mario:{bg:'#f0fdf4',c:'#84cc16',t:'MAR'},tetris:{bg:'#fef2f2',c:'#ef4444',t:'TET'},crossy:{bg:'#f0fdf4',c:'#16a34a',t:'CRO'},connect4:{bg:'#fef2f2',c:'#ef4444',t:'C4'} }
+  const modes:ExerciseMode[] = ['stereo','anaglyph','saccadic','pursuit','gabor','hart','mario','tetris','crossy','connect4']
   return (
     <div className="fade-up min-h-screen bg-gradient-to-br from-sky-50 to-emerald-50 flex flex-col">
       <div className="bg-white/90 backdrop-blur-sm px-5 py-4 flex items-center gap-3 shadow-sm">
@@ -1065,6 +1090,730 @@ function SettingsView({ config, onSave, onBack, onReset, onCalibrate }:{ config:
           )}
         </div>
         <button onClick={()=>{onSave(form);onBack()}} className="btn bg-sky-500 text-white font-black text-lg rounded-3xl py-4 shadow-xl hover:bg-sky-400 transition-all" style={{ boxShadow:'0 8px 28px rgba(14,165,233,0.38)' }}>Guardar configuracion</button>
+      </div>
+    </div>
+  )
+}
+
+// ─── SUPER MARIO PLATFORMER ───────────────────────────────────
+function MarioView({ remaining,totalT,sessionTime,level,celebrate,onHit,onMiss,onEnd }:ExShared&{ celebrate:boolean; onHit:(rt:number)=>void; onMiss:()=>void; onEnd:()=>void }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const [dead,setDead]   = useState(false)
+  const [won,setWon]     = useState(false)
+  const [score,setScore] = useState(0)
+  const [coins,setCoins] = useState(0)
+  const [rkey,setRkey]   = useState(0)
+  const keys  = useRef({left:false,right:false,jump:false})
+  const jlock = useRef(false)
+
+  useEffect(()=>{
+    const T=32,SW=400,SH=240,GY=SH-T,WW=4800
+    const GRAV=0.41,JV=-10.5,SPD=3.8
+    const canvas=canvasRef.current!
+    canvas.width=SW; canvas.height=SH
+    const ctx=canvas.getContext('2d')!
+
+    type R={x:number;y:number;w:number;h:number}
+    type Pipe=R&{col:string}
+    type Blk=R&{type:'brick'|'question'|'used';coins:number;bounce:number;col:string}
+    type Foe=R&{vx:number;alive:boolean;sqT:number;col:string}
+    type FC ={x:number;y:number;vy:number;life:number;col:string}
+
+    const RED='#ef4444',GRN='#84cc16'
+
+    // ── Level data ────────────────────────────────────────────
+    const plats:R[]=[
+      {x:0,   y:GY,w:1568,h:64},
+      {x:1664,y:GY,w:WW-1664,h:64},
+      // staircase
+      {x:2400,y:GY-T,  w:T,h:T},
+      {x:2432,y:GY-2*T,w:T,h:2*T},
+      {x:2464,y:GY-3*T,w:T,h:3*T},
+      {x:2496,y:GY-4*T,w:T,h:4*T},
+      {x:2528,y:GY-5*T,w:T,h:5*T},
+    ]
+    const pipes:Pipe[]=[
+      {x:448, y:GY-64, w:48,h:64, col:GRN},
+      {x:608, y:GY-96, w:48,h:96, col:RED},
+      {x:848, y:GY-64, w:48,h:64, col:GRN},
+      {x:1152,y:GY-96, w:48,h:96, col:RED},
+      {x:1700,y:GY-64, w:48,h:64, col:GRN},
+    ]
+    const blocks:Blk[]=[
+      {x:352,y:GY-4*T,w:T,h:T,type:'brick',   coins:0,bounce:0,col:RED},
+      {x:384,y:GY-4*T,w:T,h:T,type:'question',coins:1,bounce:0,col:GRN},
+      {x:416,y:GY-4*T,w:T,h:T,type:'brick',   coins:0,bounce:0,col:RED},
+      {x:448,y:GY-4*T,w:T,h:T,type:'question',coins:1,bounce:0,col:GRN},
+      {x:480,y:GY-4*T,w:T,h:T,type:'brick',   coins:0,bounce:0,col:RED},
+      {x:608,y:GY-6*T,w:T,h:T,type:'question',coins:1,bounce:0,col:GRN},
+      {x:768,y:GY-4*T,w:T,h:T,type:'brick',   coins:0,bounce:0,col:GRN},
+      {x:800,y:GY-4*T,w:T,h:T,type:'question',coins:1,bounce:0,col:RED},
+      {x:832,y:GY-4*T,w:T,h:T,type:'brick',   coins:0,bounce:0,col:GRN},
+      {x:1024,y:GY-4*T,w:T,h:T,type:'brick',  coins:0,bounce:0,col:RED},
+      {x:1056,y:GY-4*T,w:T,h:T,type:'question',coins:1,bounce:0,col:GRN},
+      {x:1088,y:GY-4*T,w:T,h:T,type:'brick',  coins:0,bounce:0,col:RED},
+      {x:1120,y:GY-4*T,w:T,h:T,type:'question',coins:1,bounce:0,col:GRN},
+    ]
+    const foes:Foe[]=[
+      {x:510, y:GY-24,w:24,h:24,vx:-(1.2+level*0.12),alive:true,sqT:0,col:GRN},
+      {x:720, y:GY-24,w:24,h:24,vx:-(1.2+level*0.12),alive:true,sqT:0,col:RED},
+      {x:1010,y:GY-24,w:24,h:24,vx:-(1.2+level*0.12),alive:true,sqT:0,col:GRN},
+      {x:1340,y:GY-24,w:24,h:24,vx:-(1.2+level*0.12),alive:true,sqT:0,col:RED},
+      {x:1840,y:GY-24,w:24,h:24,vx:-(1.2+level*0.12),alive:true,sqT:0,col:GRN},
+      {x:2150,y:GY-24,w:24,h:24,vx:-(1.2+level*0.12),alive:true,sqT:0,col:RED},
+    ]
+    const flyC:FC[]=[]
+    const FLAG=WW-280
+
+    const P={x:64,y:GY-32,w:24,h:32,vx:0,vy:0,onGround:false,dir:1,frame:0,dead:false,deadT:0}
+    let camX=0,scoreV=0,coinsV=0,running=true
+    jlock.current=false
+    setDead(false); setWon(false); setScore(0); setCoins(0)
+
+    // ── Physics helpers ───────────────────────────────────────
+    function aabb(a:R,b:R){return a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y}
+    function solids(){return[...plats,...pipes,...blocks]}
+
+    function moveX(dx:number){
+      P.x+=dx
+      for(const s of solids()){
+        if(aabb(P,s)){if(dx>0)P.x=s.x-P.w;else P.x=s.x+s.w;P.vx=0}
+      }
+    }
+    function moveY(dy:number){
+      P.y+=dy; P.onGround=false
+      for(const s of solids()){
+        if(!aabb(P,s))continue
+        if(dy>0){P.y=s.y-P.h;P.vy=0;P.onGround=true}
+        else{
+          P.y=s.y+s.h;P.vy=0
+          for(const b of blocks){
+            if(b===s&&b.type==='question'&&b.coins>0){
+              b.coins--;b.bounce=10;if(b.coins===0)b.type='used'
+              coinsV++;setCoins(coinsV)
+              scoreV+=100;setScore(scoreV)
+              flyC.push({x:b.x+T/2,y:b.y,vy:-5,life:32,col:b.col})
+              onHit(0)
+            }
+          }
+        }
+      }
+    }
+
+    // ── Draw helpers ──────────────────────────────────────────
+    function dGround(r:R,i:number){
+      const sx=Math.round(r.x-camX)
+      const top=i===0?GRN:RED
+      ctx.fillStyle=top;ctx.fillRect(sx,r.y,r.w,6)
+      ctx.fillStyle='#1e293b';ctx.fillRect(sx,r.y+6,r.w,r.h-6)
+      ctx.fillStyle=top
+      const si=Math.max(0,Math.floor((camX-r.x)/T)*T)
+      for(let j=si;j<r.w&&j<si+SW+T*2;j+=T*2)ctx.fillRect(sx+j,r.y+6,T,r.h-6)
+    }
+    function dBrick(bx:number,by:number,col:string){
+      const dark=col===RED?'#7f1d1d':'#14532d'
+      ctx.fillStyle=dark;ctx.fillRect(bx,by,T,T)
+      ctx.fillStyle=col
+      ctx.fillRect(bx+2,by+2,12,6);ctx.fillRect(bx+18,by+2,10,6)
+      ctx.fillRect(bx+10,by+10,18,6);ctx.fillRect(bx+2,by+10,6,6)
+    }
+    function dQuestion(bx:number,by:number,used:boolean,col:string){
+      if(used){ctx.fillStyle='#374151';ctx.fillRect(bx,by,T,T);ctx.fillStyle='#4b5563';ctx.fillRect(bx+2,by+2,T-4,T-4);return}
+      const light=col===RED?'#fca5a5':'#bbf7d0'
+      ctx.fillStyle=col;ctx.fillRect(bx,by,T,T)
+      ctx.fillStyle=light;ctx.fillRect(bx+2,by+2,T-4,T-4)
+      ctx.fillStyle=col;ctx.font='bold 18px sans-serif';ctx.textAlign='center'
+      ctx.fillText('?',bx+T/2,by+T-7)
+    }
+    function dPipe(p:Pipe){
+      const sx=Math.round(p.x-camX)
+      const dark=p.col===RED?'#7f1d1d':'#14532d'
+      const lite=p.col===RED?'#f87171':'#4ade80'
+      ctx.fillStyle=dark;ctx.fillRect(sx+4,p.y+14,p.w-8,p.h-14)
+      ctx.fillStyle=lite;ctx.fillRect(sx+6,p.y+16,6,p.h-18)
+      ctx.fillStyle=dark;ctx.fillRect(sx-3,p.y,p.w+6,14)
+      ctx.fillStyle=p.col;ctx.fillRect(sx-1,p.y+2,p.w+2,10)
+      ctx.fillStyle=lite;ctx.fillRect(sx+2,p.y+4,8,6)
+    }
+    function dPlayer(){
+      const sx=Math.round(P.x-camX),sy=Math.round(P.y)
+      if(P.dead){
+        ctx.fillStyle='#ef4444';ctx.font='bold 26px sans-serif';ctx.textAlign='center'
+        ctx.fillText('✖',sx+12,sy+26);return
+      }
+      const walk=P.onGround&&Math.abs(P.vx)>0.5?Math.floor(P.frame/5)%2:0
+      ctx.fillStyle='#DC2626';ctx.fillRect(sx-2,sy,28,9);ctx.fillRect(sx+3,sy-7,18,8)
+      ctx.fillStyle='#F6A57A';ctx.fillRect(sx,sy+9,24,10)
+      ctx.fillStyle='#1e293b';ctx.fillRect(P.dir>0?sx+13:sx+6,sy+11,5,4)
+      ctx.fillStyle='#4A2F0A';ctx.fillRect(sx+2,sy+16,20,3)
+      ctx.fillStyle='#1D4ED8';ctx.fillRect(sx+2,sy+19,20,10)
+      ctx.fillStyle='#F6A57A';ctx.fillRect(sx-4,sy+19,6,7);ctx.fillRect(sx+22,sy+19,6,7)
+      ctx.fillStyle='#DC2626';ctx.fillRect(sx+1,sy+29,9,4);ctx.fillRect(sx+14,sy+29,9,4)
+      ctx.fillStyle='#1e293b'
+      if(walk===0){ctx.fillRect(sx-1,sy+31,13,4);ctx.fillRect(sx+12,sy+31,13,4)}
+      else{ctx.fillRect(sx+2,sy+31,10,4);ctx.fillRect(sx+12,sy+31,10,4)}
+    }
+    function dFoe(e:Foe){
+      if(!e.alive&&e.sqT<=0)return
+      const sx=Math.round(e.x-camX),sy=Math.round(e.y)
+      const dark=e.col===RED?'#7f1d1d':'#14532d'
+      if(!e.alive){ctx.fillStyle=e.col;ctx.fillRect(sx,sy+14,24,8);return}
+      const walk=Math.floor(P.frame/8)%2
+      ctx.fillStyle=dark;ctx.fillRect(sx,sy,24,16)
+      ctx.fillStyle=e.col;ctx.fillRect(sx+2,sy+1,20,13)
+      ctx.fillStyle='white';ctx.fillRect(sx+3,sy+3,7,6);ctx.fillRect(sx+14,sy+3,7,6)
+      ctx.fillStyle='#1e293b';ctx.fillRect(sx+5,sy+5,3,4);ctx.fillRect(sx+16,sy+5,3,4)
+      ctx.fillStyle=dark;ctx.fillRect(sx+2,sy+2,8,3);ctx.fillRect(sx+14,sy+2,8,3)
+      ctx.fillStyle=e.col;ctx.fillRect(sx+2,sy+14,20,8)
+      ctx.fillStyle=dark
+      if(walk===0){ctx.fillRect(sx,sy+20,11,4);ctx.fillRect(sx+13,sy+20,11,4)}
+      else{ctx.fillRect(sx+2,sy+20,11,4);ctx.fillRect(sx+11,sy+20,11,4)}
+    }
+
+    // ── Game loop ─────────────────────────────────────────────
+    let rafId=0
+
+    function loop(){
+      const k=keys.current
+
+      if(!P.dead&&running){
+        if(k.left){P.vx-=0.55;P.dir=-1}
+        if(k.right){P.vx+=0.55;P.dir=1}
+        if(!k.left&&!k.right)P.vx*=0.78
+        P.vx=Math.max(-SPD,Math.min(SPD,P.vx))
+
+        if(k.jump&&P.onGround&&!jlock.current){P.vy=JV;P.onGround=false;jlock.current=true}
+        if(!k.jump)jlock.current=false
+        P.vy+=GRAV
+        if(!k.jump&&P.vy<0)P.vy+=GRAV*1.6
+        P.vy=Math.min(P.vy,13)
+
+        moveX(P.vx); moveY(P.vy)
+        P.frame++
+        if(P.x<0){P.x=0;P.vx=0}
+        if(P.x+P.w>WW)P.x=WW-P.w
+
+        camX+=(P.x-SW*0.35-camX)*0.12
+        camX=Math.max(0,Math.min(WW-SW,camX))
+
+        if(P.y>SH+60){P.dead=true;P.vy=-6;P.vx=0;onMiss()}
+        if(P.x+P.w>FLAG&&!P.dead){running=false;scoreV+=1000;setScore(scoreV);setWon(true);onHit(0)}
+      } else if(P.dead){
+        P.deadT++;P.vy+=GRAV;P.y+=P.vy
+        if(P.deadT>90){running=false;setDead(true)}
+      }
+
+      // Enemies
+      for(const e of foes){
+        if(!e.alive){if(e.sqT>0)e.sqT--;continue}
+        e.x+=e.vx;e.y+=0.5
+        for(const s of[...plats,...pipes,...blocks])if(aabb(e,s))e.y=s.y-e.h
+        if(e.x<0||e.x+e.w>WW)e.vx*=-1
+        const nxt={...e,x:e.x+e.vx*2}
+        for(const s of[...plats,...pipes,...blocks])if(aabb(nxt,s)&&!aabb(e,s)){e.vx*=-1;break}
+        if(e.y>SH+50){e.alive=false;e.sqT=0;continue}
+        if(!P.dead&&aabb(P,e)){
+          if(P.y-P.vy+P.h<=e.y+8&&P.vy>0){e.alive=false;e.sqT=30;P.vy=-7;scoreV+=200;setScore(scoreV);onHit(0)}
+          else if(!P.dead){P.dead=true;P.deadT=0;P.vy=-8;P.vx=0;onMiss()}
+        }
+      }
+
+      for(const c of flyC){c.y+=c.vy;c.vy+=0.3;c.life--}
+      flyC.splice(0,flyC.length,...flyC.filter(c=>c.life>0))
+      for(const b of blocks)if(b.bounce>0)b.bounce=Math.max(0,b.bounce*0.65)
+
+      // ── Draw ───────────────────────────────────────────────
+      const vL=camX-T,vR=camX+SW+T
+      ctx.fillStyle='#5C94FC';ctx.fillRect(0,0,SW,SH)
+
+      // Clouds (parallax)
+      ctx.fillStyle='rgba(255,255,255,0.88)'
+      for(const cl of [{ox:80,y:28,r:26},{ox:350,y:18,r:22},{ox:720,y:34,r:20},{ox:1200,y:22,r:24}]){
+        const cx=((cl.ox-camX*0.22)%SW+SW)%SW
+        ctx.beginPath();ctx.ellipse(cx,cl.y,cl.r,cl.r*0.55,0,0,Math.PI*2);ctx.fill()
+        ctx.beginPath();ctx.ellipse(cx-cl.r*.5,cl.y+5,cl.r*.55,cl.r*.45,0,0,Math.PI*2);ctx.fill()
+        ctx.beginPath();ctx.ellipse(cx+cl.r*.45,cl.y+5,cl.r*.55,cl.r*.45,0,0,Math.PI*2);ctx.fill()
+      }
+
+      // Ground
+      plats.slice(0,2).forEach((p,i)=>{if(p.x+p.w>vL&&p.x<vR)dGround(p,i)})
+      // Staircase (alternate red/green tiles)
+      for(const p of plats.slice(2)){
+        if(p.x+p.w>vL&&p.x<vR){
+          const sx=Math.round(p.x-camX)
+          for(let yi=0;yi<p.h;yi+=T)dBrick(sx,p.y+yi,yi%64===0?RED:GRN)
+        }
+      }
+      // Pipes
+      for(const p of pipes)if(p.x+p.w>vL&&p.x<vR)dPipe(p)
+      // Blocks
+      ctx.textAlign='center'
+      for(const b of blocks){
+        if(b.x<vL||b.x>vR)continue
+        const bx=Math.round(b.x-camX),by=Math.round(b.y-b.bounce)
+        if(b.type==='brick')dBrick(bx,by,b.col);else dQuestion(bx,by,b.type==='used',b.col)
+      }
+      // Flag
+      const fsx=Math.round(FLAG-camX)
+      if(fsx>-10&&fsx<SW+10){
+        ctx.fillStyle='#6B7280';ctx.fillRect(fsx+22,GY-6*T,4,6*T)
+        ctx.fillStyle='#22c55e';ctx.fillRect(fsx+26,GY-6*T,24,18)
+        ctx.fillStyle='#16a34a';ctx.fillRect(fsx+26,GY-6*T,24,9)
+      }
+      // Enemies & player
+      for(const e of foes)if(e.x+e.w>vL&&e.x<vR)dFoe(e)
+      for(const c of flyC){ctx.fillStyle=c.col;ctx.fillRect(Math.round(c.x-4-camX),Math.round(c.y-4),8,8)}
+      dPlayer()
+      // HUD
+      ctx.fillStyle='rgba(0,0,0,0.45)';ctx.fillRect(0,0,SW,22)
+      ctx.fillStyle='white';ctx.font='bold 12px monospace'
+      ctx.textAlign='left';ctx.fillText(`★${scoreV}`,8,16)
+      ctx.textAlign='center';ctx.fillText(`🪙${coinsV}`,SW/2,16)
+      ctx.textAlign='right';ctx.fillText(`NV.${level}`,SW-6,16)
+
+      if(running||P.dead)rafId=requestAnimationFrame(loop)
+    }
+    rafId=requestAnimationFrame(loop)
+    return()=>cancelAnimationFrame(rafId)
+  },[rkey,level])
+
+  // Keyboard
+  useEffect(()=>{
+    const kd=(e:KeyboardEvent)=>{
+      if(['ArrowLeft','a','A'].includes(e.key)){e.preventDefault();keys.current.left=true}
+      if(['ArrowRight','d','D'].includes(e.key)){e.preventDefault();keys.current.right=true}
+      if(['ArrowUp','w','W',' '].includes(e.key)){e.preventDefault();keys.current.jump=true}
+    }
+    const ku=(e:KeyboardEvent)=>{
+      if(['ArrowLeft','a','A'].includes(e.key))keys.current.left=false
+      if(['ArrowRight','d','D'].includes(e.key))keys.current.right=false
+      if(['ArrowUp','w','W',' '].includes(e.key))keys.current.jump=false
+    }
+    window.addEventListener('keydown',kd);window.addEventListener('keyup',ku)
+    return()=>{window.removeEventListener('keydown',kd);window.removeEventListener('keyup',ku)}
+  },[])
+
+  const mBtn='select-none touch-none active:scale-95 bg-slate-700 rounded-2xl font-black text-white shadow-lg border-2 border-slate-600 flex items-center justify-center'
+
+  return(
+    <div className="min-h-screen flex flex-col" style={{background:'#0f172a'}}>
+      <TopBar color="#84cc16" remaining={remaining} sessionTime={sessionTime} totalT={totalT} onEnd={onEnd} bg="linear-gradient(90deg,#84cc16,#ef4444)"/>
+      <StatsRow
+        left={<><span className="text-2xl font-black text-yellow-400">{score}</span><p className="text-xs text-gray-400 font-bold">Puntos</p></>}
+        center={<><span className="text-sm font-black text-yellow-300">Nivel {level}</span>{celebrate&&<span className="text-xs text-green-400 font-bold ml-1">+1</span>}</>}
+        right={<><span className="text-2xl font-black text-yellow-300">{coins}</span><p className="text-xs text-gray-400 font-bold">Monedas</p></>}
+      />
+      <div className="flex-1 flex flex-col items-center justify-center gap-2 p-2">
+        <canvas ref={canvasRef} style={{borderRadius:10,maxWidth:'100%',border:'2px solid #334155',imageRendering:'pixelated'}}/>
+        {dead&&<div className="flex flex-col items-center gap-3 fade-up">
+          <p className="text-white font-black text-xl">Game Over · {score} pts</p>
+          <button onClick={()=>{setDead(false);setRkey(k=>k+1)}} className="btn bg-red-500 text-white font-black rounded-2xl px-8 py-3 shadow-xl">Reintentar</button>
+        </div>}
+        {won&&<div className="flex flex-col items-center gap-3 fade-up">
+          <p className="text-yellow-300 font-black text-xl">¡Nivel completado! · {score} pts</p>
+          <button onClick={()=>{setWon(false);setRkey(k=>k+1)}} className="btn bg-green-500 text-white font-black rounded-2xl px-8 py-3 shadow-xl">Jugar de nuevo</button>
+        </div>}
+        {!dead&&!won&&<div className="flex items-center justify-between w-full max-w-sm px-2 mt-1">
+          <div className="flex gap-2">
+            <button className={`${mBtn} w-16 h-14 text-2xl`}
+              onTouchStart={e=>{e.preventDefault();keys.current.left=true}}
+              onTouchEnd={()=>keys.current.left=false}
+              onMouseDown={()=>keys.current.left=true}
+              onMouseUp={()=>keys.current.left=false}
+              onMouseLeave={()=>keys.current.left=false}>◀</button>
+            <button className={`${mBtn} w-16 h-14 text-2xl`}
+              onTouchStart={e=>{e.preventDefault();keys.current.right=true}}
+              onTouchEnd={()=>keys.current.right=false}
+              onMouseDown={()=>keys.current.right=true}
+              onMouseUp={()=>keys.current.right=false}
+              onMouseLeave={()=>keys.current.right=false}>▶</button>
+          </div>
+          <button className={`${mBtn} w-20 h-14 text-sm`}
+            onTouchStart={e=>{e.preventDefault();keys.current.jump=true}}
+            onTouchEnd={()=>keys.current.jump=false}
+            onMouseDown={()=>keys.current.jump=true}
+            onMouseUp={()=>keys.current.jump=false}
+            onMouseLeave={()=>keys.current.jump=false}>SALTAR</button>
+        </div>}
+      </div>
+      <div className="px-4 py-2 text-center border-t border-slate-700">
+        <p className="text-xs font-bold text-slate-500">WASD / flechas · W o Espacio para saltar · llega a la bandera verde</p>
+      </div>
+    </div>
+  )
+}
+
+// ─── TETRIS ───────────────────────────────────────────────────
+const TW=10, TH=18
+const TSHAPES=[
+  {s:[[1,1,1,1]],c:'#ef4444'},
+  {s:[[1,1],[1,1]],c:'#84cc16'},
+  {s:[[0,1,0],[1,1,1]],c:'#ef4444'},
+  {s:[[0,1,1],[1,1,0]],c:'#84cc16'},
+  {s:[[1,1,0],[0,1,1]],c:'#ef4444'},
+  {s:[[1,0,0],[1,1,1]],c:'#84cc16'},
+  {s:[[0,0,1],[1,1,1]],c:'#ef4444'},
+]
+function tRot(s:number[][]):number[][]{return s[0].map((_,i)=>s.map(r=>r[i]).reverse())}
+function tRand(){const t=TSHAPES[Math.floor(Math.random()*TSHAPES.length)];return{s:t.s.map(r=>[...r]),c:t.c}}
+function tEmpty():({c:string}|null)[][]{return Array.from({length:TH},()=>Array(TW).fill(null))}
+
+function TetrisView({ remaining,totalT,sessionTime,level,onHit,onMiss,onEnd }:ExShared&{ misses:number; onHit:()=>void; onMiss:()=>void; onEnd:()=>void }) {
+  const boardRef = useRef(tEmpty())
+  const pieceRef = useRef({...tRand(),x:3,y:0})
+  const [,setTick]       = useState(0)
+  const [score,setScore] = useState(0)
+  const [lines,setLines] = useState(0)
+  const [over,setOver]   = useState(false)
+  const [rkey,setRkey]   = useState(0)
+  const scoreRef = useRef(0); const linesRef = useRef(0)
+  const rerender = useCallback(()=>setTick(t=>t+1),[])
+
+  function fits(shape:number[][],x:number,y:number,board:({c:string}|null)[][]){
+    for(let r=0;r<shape.length;r++) for(let c=0;c<shape[r].length;c++){
+      if(!shape[r][c]) continue
+      const nr=y+r,nc=x+c
+      if(nr>=TH||nc<0||nc>=TW||board[nr]?.[nc]) return false
+    }
+    return true
+  }
+
+  function lock(){
+    const p=pieceRef.current,board=boardRef.current
+    for(let r=0;r<p.s.length;r++) for(let c=0;c<p.s[r].length;c++){
+      if(!p.s[r][c]) continue
+      const br=p.y+r,bc=p.x+c
+      if(br>=0&&br<TH) board[br][bc]={c:p.c}
+    }
+    const cleared=board.filter(row=>row.every(c=>c!==null))
+    const kept=board.filter(row=>!row.every(c=>c!==null))
+    boardRef.current=[...Array.from({length:cleared.length},()=>Array(TW).fill(null)),...kept]
+    if(cleared.length){ linesRef.current+=cleared.length; scoreRef.current+=cleared.length*100*level; setLines(linesRef.current); setScore(scoreRef.current); onHit() }
+    const np={...tRand(),x:3,y:0}
+    if(!fits(np.s,np.x,np.y,boardRef.current)){setOver(true);onMiss();return}
+    pieceRef.current=np; rerender()
+  }
+
+  const moveDown=useCallback(()=>{ const p=pieceRef.current; if(fits(p.s,p.x,p.y+1,boardRef.current)){pieceRef.current={...p,y:p.y+1};rerender()}else lock() },[])
+  const moveL=()=>{ const p=pieceRef.current; if(fits(p.s,p.x-1,p.y,boardRef.current)){pieceRef.current={...p,x:p.x-1};rerender()} }
+  const moveR=()=>{ const p=pieceRef.current; if(fits(p.s,p.x+1,p.y,boardRef.current)){pieceRef.current={...p,x:p.x+1};rerender()} }
+  const rotate=()=>{ const r=tRot(pieceRef.current.s); const p=pieceRef.current; if(fits(r,p.x,p.y,boardRef.current)){pieceRef.current={...p,s:r};rerender()} }
+  const drop=()=>{ while(fits(pieceRef.current.s,pieceRef.current.x,pieceRef.current.y+1,boardRef.current)){pieceRef.current={...pieceRef.current,y:pieceRef.current.y+1}} lock() }
+
+  useEffect(()=>{ boardRef.current=tEmpty(); pieceRef.current={...tRand(),x:3,y:0}; scoreRef.current=0; linesRef.current=0; setScore(0); setLines(0); setOver(false); rerender() },[rkey])
+  useEffect(()=>{ if(over)return; const id=setInterval(moveDown,Math.max(150,700-level*80)); return()=>clearInterval(id) },[over,level,rkey,moveDown])
+  useEffect(()=>{
+    function onKey(e:KeyboardEvent){
+      if(over)return
+      if(e.key==='ArrowLeft')moveL(); else if(e.key==='ArrowRight')moveR()
+      else if(e.key==='ArrowDown')moveDown(); else if(e.key==='ArrowUp'||e.key==='z')rotate()
+      else if(e.key===' '){e.preventDefault();drop()}
+    }
+    window.addEventListener('keydown',onKey); return()=>window.removeEventListener('keydown',onKey)
+  },[over,rkey])
+
+  const display=boardRef.current.map(r=>[...r])
+  const p=pieceRef.current
+  if(!over){ for(let r=0;r<p.s.length;r++) for(let c=0;c<p.s[r].length;c++){ if(!p.s[r][c])continue; const br=p.y+r,bc=p.x+c; if(br>=0&&br<TH&&bc>=0&&bc<TW)display[br][bc]={c:p.c} } }
+  const cellSz=Math.min(Math.floor((window.innerWidth-80)/TW),28)
+
+  return (
+    <div className="min-h-screen flex flex-col bg-slate-900">
+      <TopBar color="#84cc16" remaining={remaining} sessionTime={sessionTime} totalT={totalT} onEnd={onEnd} bg="linear-gradient(90deg,#ef4444,#84cc16)"/>
+      <StatsRow left={<><span className="text-2xl font-black text-green-400">{score}</span><p className="text-xs text-gray-400 font-bold">Puntos</p></>} center={<span className="text-sm font-black text-yellow-300">Nivel {level}</span>} right={<><span className="text-2xl font-black text-sky-400">{lines}</span><p className="text-xs text-gray-400 font-bold">Lineas</p></>}/>
+      <div className="flex-1 flex flex-col items-center justify-center gap-3 py-2">
+        <div style={{display:'grid',gridTemplateRows:`repeat(${TH},${cellSz}px)`,gridTemplateColumns:`repeat(${TW},${cellSz}px)`,border:'2px solid #334155',borderRadius:8,overflow:'hidden',background:'#0f172a'}}>
+          {display.map((row,r)=>row.map((cell,c)=>(
+            <div key={`${r}-${c}`} style={{width:cellSz,height:cellSz,background:cell?cell.c:'transparent',border:'1px solid #1e293b',borderRadius:2}}/>
+          )))}
+        </div>
+        {over&&<div className="flex flex-col items-center gap-2 fade-up">
+          <p className="text-white font-black text-lg">Game Over · {score} pts</p>
+          <button onClick={()=>setRkey(k=>k+1)} className="btn bg-green-500 text-white font-black rounded-2xl px-6 py-3">Reintentar</button>
+        </div>}
+        {!over&&<div className="flex flex-col items-center gap-2">
+          <button onClick={rotate} className="btn w-14 h-14 rounded-2xl bg-slate-700 text-white font-black text-xl shadow">↻</button>
+          <div className="flex gap-2">
+            <button onClick={moveL}  className="btn w-14 h-14 rounded-2xl bg-slate-700 text-white font-black text-xl shadow">←</button>
+            <button onClick={drop}   className="btn w-14 h-14 rounded-2xl bg-slate-600 text-white font-black text-xl shadow">⬇⬇</button>
+            <button onClick={moveR}  className="btn w-14 h-14 rounded-2xl bg-slate-700 text-white font-black text-xl shadow">→</button>
+          </div>
+        </div>}
+      </div>
+      <div className="px-4 py-2 text-center border-t border-slate-700">
+        <p className="text-xs font-bold text-slate-500">Con lentes: <span className="text-red-400">ojo rojo = piezas rojas</span> · <span className="text-green-400">ojo cyan = piezas verdes</span></p>
+      </div>
+    </div>
+  )
+}
+
+// ─── CROSSY ROAD ─────────────────────────────────────────────
+// Canvas-based: 7 vertical lanes, player crosses left→right, cars move up/down
+const CX_LANES=7, CX_ROWS=5
+const CX_W=360, CX_H=390
+const CX_LW=CX_W/CX_LANES
+function cxRowY(r:number){return 44+r*((CX_H-88)/(CX_ROWS-1))}
+function cxLaneX(l:number){return CX_LW*l+CX_LW/2}
+
+function CrossyView({ remaining,totalT,sessionTime,fusions,level,misses,onHit,onMiss,onEnd }:ExShared&{ misses:number; celebrate:boolean; onHit:(rt:number)=>void; onMiss:()=>void; onEnd:()=>void }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const playerRef = useRef({l:0,r:Math.floor(CX_ROWS/2)})
+  const carsRef   = useRef<{l:number;y:number;col:string;dir:number;spd:number}[]>([])
+  const deadRef   = useRef(false)
+  const [score,setScore] = useState(0)
+  const [dead,setDead]   = useState(false)
+  const [rkey,setRkey]   = useState(0)
+
+  useEffect(()=>{
+    const canvas=canvasRef.current!
+    canvas.width=CX_W; canvas.height=CX_H
+    const ctx=canvas.getContext('2d')!
+    playerRef.current={l:0,r:Math.floor(CX_ROWS/2)}
+    deadRef.current=false
+    const tid=setTimeout(()=>{ setScore(0); setDead(false) },0)
+
+    // 2 cars per traffic lane (lanes 1..CX_LANES-2)
+    carsRef.current=Array.from({length:CX_LANES-2},(_,li)=>{
+      const lane=li+1, dir=li%2===0?1:-1
+      const col=li%2===0?'#ef4444':'#84cc16'
+      const spd=0.55+li*0.1+level*0.07
+      return [
+        {l:lane,y:Math.random()*CX_H,col,dir,spd},
+        {l:lane,y:(Math.random()*CX_H+CX_H*0.5)%CX_H,col,dir,spd},
+      ]
+    }).flat()
+
+    let animId:number
+
+    function drawCar(x:number,y:number,col:string,dir:number){
+      const cw=CX_LW*0.74, ch=CX_LW*0.62
+      ctx.fillStyle=col
+      ctx.beginPath(); ctx.ellipse(x,y,cw/2,ch/2,0,0,Math.PI*2); ctx.fill()
+      // shine
+      ctx.fillStyle='rgba(255,255,255,0.18)'
+      ctx.beginPath(); ctx.ellipse(x-cw*0.12,y-ch*0.18,cw*0.25,ch*0.22,0,0,Math.PI*2); ctx.fill()
+      // headlights
+      ctx.fillStyle='rgba(255,255,255,0.92)'
+      const hy=y+(dir>0?-ch*0.34:ch*0.34)
+      ctx.beginPath(); ctx.arc(x-cw*0.23,hy,3.5,0,Math.PI*2); ctx.fill()
+      ctx.beginPath(); ctx.arc(x+cw*0.23,hy,3.5,0,Math.PI*2); ctx.fill()
+    }
+
+    function draw(){
+      ctx.fillStyle='#111827'; ctx.fillRect(0,0,CX_W,CX_H)
+      // lane backgrounds
+      for(let l=0;l<CX_LANES;l++){
+        ctx.fillStyle=l===0?'#1e3a8a':l===CX_LANES-1?'#14532d':l%2===1?'#2a1010':'#101a10'
+        ctx.fillRect(CX_LW*l,0,CX_LW,CX_H)
+      }
+      // lane dividers
+      ctx.strokeStyle='#374151'; ctx.lineWidth=2
+      for(let l=1;l<CX_LANES;l++){ ctx.beginPath(); ctx.moveTo(CX_LW*l,0); ctx.lineTo(CX_LW*l,CX_H); ctx.stroke() }
+      // row guide dashes
+      ctx.strokeStyle='rgba(100,116,139,0.28)'; ctx.setLineDash([3,6])
+      for(let r=0;r<CX_ROWS;r++){ const y=cxRowY(r); ctx.beginPath(); ctx.moveTo(CX_LW,y); ctx.lineTo(CX_W-CX_LW,y); ctx.stroke() }
+      ctx.setLineDash([])
+      // labels
+      ctx.font='bold 9px sans-serif'; ctx.textAlign='center'
+      ctx.fillStyle='#93c5fd'; ctx.fillText('START',cxLaneX(0),CX_H/2)
+      ctx.fillStyle='#4ade80'; ctx.fillText('META',cxLaneX(CX_LANES-1),CX_H/2)
+      // cars
+      for(const car of carsRef.current) drawCar(cxLaneX(car.l),car.y,car.col,car.dir)
+      // player
+      const p=playerRef.current, px=cxLaneX(p.l), py=cxRowY(p.r)
+      ctx.fillStyle=deadRef.current?'#ef4444':'#f1f5f9'
+      ctx.beginPath(); ctx.arc(px,py,16,0,Math.PI*2); ctx.fill()
+      ctx.strokeStyle='#94a3b8'; ctx.lineWidth=2
+      ctx.beginPath(); ctx.arc(px,py,16,0,Math.PI*2); ctx.stroke()
+      if(!deadRef.current){
+        ctx.fillStyle='#1e293b'
+        ctx.beginPath(); ctx.arc(px-5,py-4,2.5,0,Math.PI*2); ctx.fill()
+        ctx.beginPath(); ctx.arc(px+5,py-4,2.5,0,Math.PI*2); ctx.fill()
+        ctx.beginPath(); ctx.arc(px,py+4,4,0,Math.PI); ctx.stroke()
+      }
+    }
+
+    function loop(){
+      if(deadRef.current){ draw(); return }
+      for(const car of carsRef.current){ car.y=(car.y+car.dir*car.spd+CX_H)%CX_H }
+      const p=playerRef.current
+      if(p.l>0&&p.l<CX_LANES-1){
+        const py=cxRowY(p.r)
+        for(const car of carsRef.current){
+          if(car.l===p.l&&Math.abs(car.y-py)<CX_LW*0.4){ deadRef.current=true; setDead(true); onMiss(); return }
+        }
+      }
+      draw(); animId=requestAnimationFrame(loop)
+    }
+    animId=requestAnimationFrame(loop)
+    return()=>{ clearTimeout(tid); cancelAnimationFrame(animId) }
+  },[level,rkey])
+
+  function move(dl:number,dr:number){
+    if(deadRef.current)return
+    const p=playerRef.current
+    const nl=Math.max(0,Math.min(CX_LANES-1,p.l+dl))
+    const nr=Math.max(0,Math.min(CX_ROWS-1,p.r+dr))
+    playerRef.current={l:nl,r:nr}
+    if(nl===CX_LANES-1){ onHit(0); setScore(s=>s+1); playerRef.current={l:0,r:Math.floor(CX_ROWS/2)}; return }
+    if(nl>0&&nl<CX_LANES-1){
+      const py=cxRowY(nr)
+      for(const car of carsRef.current){
+        if(car.l===nl&&Math.abs(car.y-py)<CX_LW*0.4){ deadRef.current=true; setDead(true); onMiss(); return }
+      }
+    }
+  }
+
+  useEffect(()=>{
+    function onKey(e:KeyboardEvent){
+      if(e.key==='ArrowRight')move(1,0); else if(e.key==='ArrowLeft')move(-1,0)
+      else if(e.key==='ArrowUp')move(0,-1); else if(e.key==='ArrowDown')move(0,1)
+    }
+    window.addEventListener('keydown',onKey); return()=>window.removeEventListener('keydown',onKey)
+  },[rkey])
+
+  const btnCls='btn w-14 h-14 rounded-2xl bg-slate-700 text-white font-black text-xl shadow active:scale-90'
+
+  return (
+    <div className="min-h-screen flex flex-col" style={{background:'#0f172a'}}>
+      <TopBar color="#84cc16" remaining={remaining} sessionTime={sessionTime} totalT={totalT} onEnd={onEnd} bg="linear-gradient(90deg,#16a34a,#ef4444)"/>
+      <StatsRow left={<><span className="text-2xl font-black text-emerald-400">{score}</span><p className="text-xs text-gray-400 font-bold">Cruces</p></>} center={<span className="text-sm font-black text-yellow-300">Nivel {level} · {misses} miss</span>} right={<><span className="text-2xl font-black text-sky-400">{fusions}</span><p className="text-xs text-gray-400 font-bold">Pts</p></>}/>
+      <div className="flex-1 flex flex-col items-center justify-center gap-3 p-4">
+        <canvas ref={canvasRef} style={{borderRadius:14,display:'block',maxWidth:'100%',border:'2px solid #334155'}}/>
+        {dead&&<div className="flex flex-col items-center gap-3 fade-up">
+          <p className="text-white font-black text-xl">Atropellado!</p>
+          <button onClick={()=>setRkey(k=>k+1)} className="btn bg-green-500 text-white font-black rounded-2xl px-8 py-3 shadow-xl">Reintentar</button>
+        </div>}
+        {!dead&&<div className="flex flex-col items-center gap-2">
+          <button onClick={()=>move(0,-1)} className={btnCls}>↑</button>
+          <div className="flex gap-2">
+            <button onClick={()=>move(-1,0)} className={btnCls}>←</button>
+            <button onClick={()=>move(1,0)}  className="btn w-16 h-14 rounded-2xl bg-green-600 text-white font-black text-xl shadow active:scale-90">→</button>
+            <button onClick={()=>move(0,1)}  className={btnCls}>↓</button>
+          </div>
+        </div>}
+      </div>
+      <div className="px-4 py-2 text-center border-t border-slate-700">
+        <p className="text-xs font-bold text-slate-500">Con lentes: <span className="text-red-400">ojo rojo = autos rojos</span> · <span className="text-green-400">ojo cyan = autos verdes</span></p>
+      </div>
+    </div>
+  )
+}
+
+// ─── 4 EN LINEA ───────────────────────────────────────────────
+const C4C=7, C4R=6
+type C4Cell='R'|'G'|null
+function c4empty():C4Cell[][]{return Array.from({length:C4R},()=>Array(C4C).fill(null))}
+function c4drop(b:C4Cell[][],col:number,p:'R'|'G'):C4Cell[][]|null{
+  for(let r=C4R-1;r>=0;r--){ if(!b[r][col]){ const nb=b.map(row=>[...row]); nb[r][col]=p; return nb } }
+  return null
+}
+function c4check(b:C4Cell[][],p:'R'|'G'):[number,number][]|null{
+  const dirs=[[0,1],[1,0],[1,1],[1,-1]]
+  for(let r=0;r<C4R;r++) for(let c=0;c<C4C;c++){
+    for(const [dr,dc] of dirs){
+      const cells:[number,number][]=[[r,c],[r+dr,c+dc],[r+2*dr,c+2*dc],[r+3*dr,c+3*dc]]
+      if(cells.every(([rr,cc])=>rr>=0&&rr<C4R&&cc>=0&&cc<C4C&&b[rr][cc]===p)) return cells
+    }
+  }
+  return null
+}
+function c4ai(b:C4Cell[][]):number{
+  for(let c=0;c<C4C;c++){ const nb=c4drop(b,c,'G'); if(nb&&c4check(nb,'G')) return c }
+  for(let c=0;c<C4C;c++){ const nb=c4drop(b,c,'R'); if(nb&&c4check(nb,'R')) return c }
+  const valid=Array.from({length:C4C},(_,c)=>c).filter(c=>!b[0][c])
+  // prefer center columns
+  return valid.sort((a,b)=>Math.abs(a-3)-Math.abs(b-3))[0]??Math.floor(Math.random()*C4C)
+}
+
+function Connect4View({ remaining,totalT,sessionTime,fusions,level,onHit,onMiss,onEnd }:ExShared&{ onHit:()=>void; onMiss:()=>void; onEnd:()=>void }) {
+  const [board,setBoard]   = useState<C4Cell[][]>(c4empty)
+  const [turn,setTurn]     = useState<'R'|'G'>('R')
+  const [winner,setWinner] = useState<'R'|'G'|'draw'|null>(null)
+  const [winLine,setWinLine] = useState<[number,number][]|null>(null)
+  const [rkey,setRkey]     = useState(0)
+  const boardRef = useRef<C4Cell[][]>(c4empty())
+  const turnRef  = useRef<'R'|'G'>('R')
+  const overRef  = useRef(false)
+
+  useEffect(()=>{
+    const fresh=c4empty()
+    boardRef.current=fresh; turnRef.current='R'; overRef.current=false
+    const tid=setTimeout(()=>{ setBoard(fresh); setTurn('R'); setWinner(null); setWinLine(null) },0)
+    return()=>clearTimeout(tid)
+  },[rkey])
+
+  // AI move
+  useEffect(()=>{
+    if(turn!=='G'||winner) return
+    const id=setTimeout(()=>{
+      const col=c4ai(boardRef.current)
+      const nb=c4drop(boardRef.current,col,'G')
+      if(!nb) return
+      boardRef.current=nb
+      const win=c4check(nb,'G')
+      if(win){ setBoard(nb); setWinner('G'); setWinLine(win); overRef.current=true; onMiss(); return }
+      if(nb[0].every(c=>c!==null)){ setBoard(nb); setWinner('draw'); overRef.current=true; return }
+      setBoard(nb); turnRef.current='R'; setTurn('R')
+    }, 350+Math.random()*300)
+    return()=>clearTimeout(id)
+  },[turn,winner,rkey])
+
+  function playerMove(col:number){
+    if(overRef.current||turnRef.current!=='R'||boardRef.current[0][col]) return
+    const nb=c4drop(boardRef.current,col,'R')
+    if(!nb) return
+    boardRef.current=nb
+    const win=c4check(nb,'R')
+    if(win){ setBoard(nb); setWinner('R'); setWinLine(win); overRef.current=true; onHit(); return }
+    if(nb[0].every(c=>c!==null)){ setBoard(nb); setWinner('draw'); overRef.current=true; return }
+    setBoard(nb); turnRef.current='G'; setTurn('G')
+  }
+
+  const cellSz=Math.min(Math.floor((window.innerWidth-28)/C4C), 46)
+
+  return (
+    <div className="min-h-screen flex flex-col bg-slate-900">
+      <TopBar color="#ef4444" remaining={remaining} sessionTime={sessionTime} totalT={totalT} onEnd={onEnd} bg="linear-gradient(90deg,#ef4444,#84cc16)"/>
+      <StatsRow
+        left={<><span className="text-2xl font-black text-emerald-400">{fusions}</span><p className="text-xs text-gray-400 font-bold">Victorias</p></>}
+        center={<><span className={`text-sm font-black px-2 py-0.5 rounded-full text-white ${turn==='R'?'bg-red-500':'bg-green-600'}`}>{winner?'Fin':turn==='R'?'Tu turno':'IA...'}</span><p className="text-xs text-gray-400 font-bold mt-0.5">Nivel {level}</p></>}
+        right={<><span className="text-2xl font-black text-red-400">{0}</span><p className="text-xs text-gray-400 font-bold">Derrotas</p></>}
+      />
+      <div className="flex-1 flex flex-col items-center justify-center gap-3 p-3">
+        {/* Column drop buttons */}
+        <div style={{display:'grid',gridTemplateColumns:`repeat(${C4C},${cellSz}px)`,gap:3}}>
+          {Array.from({length:C4C},(_,c)=>(
+            <button key={c} onClick={()=>playerMove(c)} disabled={!!winner||turn!=='R'||!!board[0][c]}
+              className="btn flex items-center justify-center font-black text-red-400 transition-all hover:text-red-300 disabled:opacity-20"
+              style={{width:cellSz,height:cellSz*0.7,background:'transparent',border:'none',fontSize:18}}>▼</button>
+          ))}
+        </div>
+        {/* Board */}
+        <div style={{display:'grid',gridTemplateColumns:`repeat(${C4C},${cellSz}px)`,gridTemplateRows:`repeat(${C4R},${cellSz}px)`,gap:3,background:'#1e3a5f',borderRadius:14,padding:6}}>
+          {board.map((row,r)=>row.map((cell,c)=>{
+            const isWin=winLine?.some(([wr,wc])=>wr===r&&wc===c)??false
+            return (
+              <div key={`${r}-${c}`} onClick={()=>playerMove(c)} style={{
+                width:cellSz,height:cellSz,borderRadius:'50%',cursor:cell||winner||turn!=='R'?'default':'pointer',
+                background:cell==='R'?'#ef4444':cell==='G'?'#84cc16':'#0f172a',
+                border:`3px solid ${isWin?'#fff':cell==='R'?'#dc2626':cell==='G'?'#65a30d':'#1e293b'}`,
+                transform:isWin?'scale(1.12)':'scale(1)',transition:'all 0.15s',
+                boxShadow:cell?(isWin?`0 0 14px 4px ${cell==='R'?'rgba(239,68,68,0.9)':'rgba(132,204,22,0.9)'}`:`0 0 6px 1px ${cell==='R'?'rgba(239,68,68,0.5)':'rgba(132,204,22,0.5)'}`):'none',
+              }}/>
+            )
+          }))}
+        </div>
+        {winner&&<div className="flex flex-col items-center gap-3 fade-up">
+          <p className={`font-black text-2xl ${winner==='R'?'text-red-400':winner==='G'?'text-green-400':'text-gray-400'}`}>
+            {winner==='R'?'Ganaste! 🎉':winner==='G'?'Gano la IA':'Empate!'}
+          </p>
+          <button onClick={()=>setRkey(k=>k+1)} className="btn bg-sky-500 text-white font-black rounded-2xl px-8 py-3 shadow-xl">Otra partida</button>
+        </div>}
+        {!winner&&<p className="text-slate-400 text-xs font-bold text-center">Toca columna para soltar ficha · conecta 4 en linea</p>}
+      </div>
+      <div className="px-4 py-2 text-center border-t border-slate-700">
+        <p className="text-xs font-bold text-slate-500">Con lentes: <span className="text-red-400">ojo rojo = fichas rojas (tu)</span> · <span className="text-green-400">ojo cyan = fichas verdes (IA)</span></p>
       </div>
     </div>
   )
