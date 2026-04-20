@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 
 // ─── TYPES ───────────────────────────────────────────────────
-type View = 'calibration'|'home'|'exercise'|'anaglyph'|'saccadic'|'pursuit'|'gabor'|'hart'|'complete'|'progress'|'settings'|'glasses-info'|'mario'|'tetris'|'crossy'|'connect4'
-type ExerciseMode = 'stereo'|'anaglyph'|'saccadic'|'pursuit'|'gabor'|'hart'|'mario'|'tetris'|'crossy'|'connect4'
+type View = 'calibration'|'home'|'exercise'|'anaglyph'|'saccadic'|'pursuit'|'gabor'|'hart'|'complete'|'progress'|'settings'|'glasses-info'|'mario'|'tetris'|'crossy'|'connect4'|'globos'|'flappy'
+type ExerciseMode = 'stereo'|'anaglyph'|'saccadic'|'pursuit'|'gabor'|'hart'|'mario'|'tetris'|'crossy'|'connect4'|'globos'|'flappy'
 
 interface SessionRecord {
   id:string; date:string; duration:number; fusions:number; maxLevel:number; mode:ExerciseMode
@@ -121,7 +121,7 @@ export default function App() {
 
   // Session timer
   useEffect(()=>{
-    const active = ['exercise','anaglyph','saccadic','pursuit','gabor','hart','mario','tetris','crossy']
+    const active = ['exercise','anaglyph','saccadic','pursuit','gabor','hart','mario','tetris','crossy','globos','flappy']
     if (!active.includes(view) || restActive) return
     const maxT = config.sessionDuration * 60
     const id = setInterval(()=>{
@@ -261,7 +261,7 @@ export default function App() {
     gaborHitsRef.current=0; gaborTotalRef.current=0; sessionTimeRef.current=0
     setLevel(lvl); setFusions(0); setMissCount(0); setConsDisplay(0)
     setSessionTime(0); setPairIdx(0); setRestActive(false); setShowHint(false); setCelebrate(false); setContrastMsg(null)
-    const viewMap:Record<ExerciseMode,View> = { stereo:'exercise',anaglyph:'anaglyph',saccadic:'saccadic',pursuit:'pursuit',gabor:'gabor',hart:'hart',mario:'mario',tetris:'tetris',crossy:'crossy',connect4:'connect4' }
+    const viewMap:Record<ExerciseMode,View> = { stereo:'exercise',anaglyph:'anaglyph',saccadic:'saccadic',pursuit:'pursuit',gabor:'gabor',hart:'hart',mario:'mario',tetris:'tetris',crossy:'crossy',connect4:'connect4',globos:'globos',flappy:'flappy' }
     setView(viewMap[mode])
   }
 
@@ -325,6 +325,8 @@ export default function App() {
       {view==='tetris'       && <TetrisView   {...sharedEx} misses={missCount} onHit={()=>handleGameHit(0)} onMiss={handleGameMiss} onEnd={finishSession} />}
       {view==='crossy'       && <CrossyView   {...sharedEx} misses={missCount} celebrate={celebrate} onHit={handleGameHit} onMiss={handleGameMiss} onEnd={finishSession} />}
       {view==='connect4'     && <Connect4View {...sharedEx} onHit={()=>handleGameHit(0)} onMiss={handleGameMiss} onEnd={finishSession} />}
+      {view==='globos'       && <GlobosView   {...sharedEx} celebrate={celebrate} onHit={handleGameHit} onMiss={handleGameMiss} onEnd={finishSession} />}
+      {view==='flappy'       && <FlappyView   {...sharedEx} celebrate={celebrate} onHit={handleGameHit} onMiss={handleGameMiss} onEnd={finishSession} />}
       {view==='complete'     && <CompleteView sessions={progress.sessions} streak={progress.streak} mode={activeModeRef.current} onHome={()=>setView('home')} onProgress={()=>setView('progress')} />}
       {view==='progress'     && <ProgressView progress={progress} onBack={()=>setView('home')} />}
       {view==='settings'     && <SettingsView config={config} onSave={setConfig} onBack={()=>setView('home')} onReset={()=>setProgress(DEFAULT_PROGRESS)} onCalibrate={()=>setView('calibration')} />}
@@ -389,18 +391,26 @@ function CalibrationView({ config, onDone }:{ config:Config; onDone:(c:Config)=>
 // ─── HOME ────────────────────────────────────────────────────
 function HomeView({ config, progress, onStart, onProgress, onSettings, onGlassesInfo }:{ config:Config; progress:Progress; onStart:(m:ExerciseMode)=>void; onProgress:()=>void; onSettings:()=>void; onGlassesInfo:()=>void }) {
   const weekN = progress.sessions.filter(s=>new Date(s.date)>new Date(Date.now()-7*86400000)).length
-  const modules:[ExerciseMode,string,string,string,string][] = [
-    ['stereo',  '👁️','Mod B — Vergencia',     'Estereogramas · sin lentes',         '#0ea5e9'],
-    ['anaglyph','🕶️','Mod B+D — Anaglifo',    'Convergencia + ambliopia · lentes',  'linear-gradient(135deg,#ef4444,#06b6d4)'],
-    ['saccadic','⚡','Mod A — Sacadicos',      'Oculomotricidad · reaccion rapida',  'linear-gradient(135deg,#f97316,#eab308)'],
-    ['pursuit', '🌀','Mod A — Seguimiento',    'Smooth pursuit · seguir objeto',     'linear-gradient(135deg,#8b5cf6,#06b6d4)'],
-    ['gabor',   '🔬','Mod D — Gabor',          'Aprendizaje perceptual · orientacion','linear-gradient(135deg,#10b981,#0ea5e9)'],
-    ['hart',    '🔤','Mod A — Hart Chart',     'Lectura secuencial · cerca/lejos',   'linear-gradient(135deg,#ec4899,#f97316)'],
-    ['mario',   '🍄','Juego — Super Mario',   'Salta tubos rojos y verdes',          'linear-gradient(135deg,#84cc16,#ef4444)'],
-    ['tetris',  '🟥','Juego — Tetris',        'Piezas rojas y verdes · fusion',      'linear-gradient(135deg,#ef4444,#84cc16)'],
-    ['crossy',  '🐸','Juego — Crossy Road',   'Cruza sin que te atropellen',         'linear-gradient(135deg,#16a34a,#ef4444)'],
-    ['connect4','⭕','Juego — 4 en Linea',    'Conecta 4 · rojo vs verde · vs IA',   'linear-gradient(135deg,#ef4444,#84cc16)'],
+  const [showOtros,setShowOtros] = useState(false)
+
+  type Mod = [ExerciseMode,string,string,string,string]
+  const games:Mod[] = [
+    ['mario',   '🍄','Super Mario',      'Salta tubos rojos y verdes',       'linear-gradient(135deg,#84cc16,#ef4444)'],
+    ['flappy',  '🐦','Flappy Bird',      'Vuela entre tubos · toca para aletear','linear-gradient(135deg,#ef4444,#84cc16)'],
+    ['globos',  '🎈','Explotar Globos',  'Toca los globos para explotarlos', 'linear-gradient(135deg,#84cc16,#ef4444)'],
+    ['tetris',  '🟥','Tetris',           'Piezas rojas y verdes · fusion',   'linear-gradient(135deg,#ef4444,#84cc16)'],
+    ['crossy',  '🐸','Crossy Road',      'Cruza sin que te atropellen',      'linear-gradient(135deg,#16a34a,#ef4444)'],
+    ['connect4','⭕','4 en Linea',       'Conecta 4 · rojo vs verde · vs IA','linear-gradient(135deg,#ef4444,#84cc16)'],
   ]
+  const otros:Mod[] = [
+    ['stereo',  '👁️','Mod B — Vergencia',    'Estereogramas · sin lentes',         '#0ea5e9'],
+    ['anaglyph','🕶️','Mod B+D — Anaglifo',   'Convergencia + ambliopia · lentes',  'linear-gradient(135deg,#ef4444,#06b6d4)'],
+    ['saccadic','⚡','Mod A — Sacadicos',     'Oculomotricidad · reaccion rapida',  'linear-gradient(135deg,#f97316,#eab308)'],
+    ['pursuit', '🌀','Mod A — Seguimiento',   'Smooth pursuit · seguir objeto',     'linear-gradient(135deg,#8b5cf6,#06b6d4)'],
+    ['gabor',   '🔬','Mod D — Gabor',         'Aprendizaje perceptual · orientacion','linear-gradient(135deg,#10b981,#0ea5e9)'],
+    ['hart',    '🔤','Mod A — Hart Chart',    'Lectura secuencial · cerca/lejos',   'linear-gradient(135deg,#ec4899,#f97316)'],
+  ]
+
   return (
     <div className="fade-up min-h-screen bg-gradient-to-br from-sky-50 via-blue-50 to-emerald-50 flex flex-col items-center justify-center p-6 gap-4">
       <div className="text-center">
@@ -416,16 +426,39 @@ function HomeView({ config, progress, onStart, onProgress, onSettings, onGlasses
           ))}
         </div>
       </div>
+
+      {/* ── Juegos ── */}
       <div className="w-full max-w-sm flex flex-col gap-2">
-        <p className="text-xs text-gray-400 font-bold text-center uppercase tracking-wider">Modulos de ejercicio</p>
-        {modules.map(([mode,emoji,title,sub,bg])=>(
-          <button key={mode} onClick={()=>mode==='anaglyph'?onGlassesInfo():onStart(mode)}
+        <p className="text-xs text-gray-400 font-bold text-center uppercase tracking-wider">Juegos</p>
+        {games.map(([mode,emoji,title,sub,bg])=>(
+          <button key={mode} onClick={()=>onStart(mode)}
             className="btn w-full text-white font-black rounded-2xl py-3 shadow hover:opacity-90 transition-all flex items-center gap-3 px-4"
             style={{ background:bg, boxShadow:'0 4px 16px rgba(0,0,0,0.15)' }}>
             <span className="text-2xl">{emoji}</span>
             <div className="text-left"><p className="text-sm leading-tight">{title}</p><p className="text-xs font-semibold opacity-80">{sub}</p></div>
           </button>
         ))}
+      </div>
+
+      {/* ── Otros (módulos clínicos) ── */}
+      <div className="w-full max-w-sm">
+        <button onClick={()=>setShowOtros(v=>!v)}
+          className="w-full flex items-center justify-between px-4 py-2 rounded-2xl bg-white shadow border border-gray-100 hover:bg-gray-50 transition-all">
+          <span className="text-xs font-black text-gray-400 uppercase tracking-wider">Otros módulos</span>
+          <span className="text-gray-400 text-sm font-bold">{showOtros ? '▲' : '▼'}</span>
+        </button>
+        {showOtros && (
+          <div className="flex flex-col gap-2 mt-2">
+            {otros.map(([mode,emoji,title,sub,bg])=>(
+              <button key={mode} onClick={()=>mode==='anaglyph'?onGlassesInfo():onStart(mode)}
+                className="btn w-full text-white font-black rounded-2xl py-3 shadow hover:opacity-90 transition-all flex items-center gap-3 px-4"
+                style={{ background:bg, boxShadow:'0 4px 16px rgba(0,0,0,0.15)' }}>
+                <span className="text-2xl">{emoji}</span>
+                <div className="text-left"><p className="text-sm leading-tight">{title}</p><p className="text-xs font-semibold opacity-80">{sub}</p></div>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
       <div className="flex gap-3 w-full max-w-sm">
         <button onClick={onProgress} className="btn flex-1 bg-white text-sky-600 font-bold rounded-2xl py-3 shadow border border-sky-100 hover:bg-sky-50 transition-all">Mi Progreso</button>
@@ -913,6 +946,8 @@ function CompleteView({ sessions, streak, mode, onHome, onProgress }:{ sessions:
     tetris:   { label:'Tetris',             bg:'linear-gradient(90deg,#ef4444,#84cc16)', icon:'🟥' },
     crossy:   { label:'Crossy Road',        bg:'linear-gradient(90deg,#16a34a,#ef4444)', icon:'🐸' },
     connect4: { label:'4 en Linea',         bg:'linear-gradient(90deg,#ef4444,#84cc16)', icon:'⭕' },
+    globos:   { label:'Explotar Globos',    bg:'linear-gradient(90deg,#84cc16,#ef4444)', icon:'🎈' },
+    flappy:   { label:'Flappy Bird',        bg:'linear-gradient(90deg,#ef4444,#84cc16)', icon:'🐦' },
   }
   const mi = modeInfo[mode]
   const fusions=last?.fusions??0, duration=last?.duration??0, maxLevel=last?.maxLevel??1
@@ -960,9 +995,9 @@ function ProgressView({ progress, onBack }:{ progress:Progress; onBack:()=>void 
   const last14 = [...progress.sessions].slice(-14)
   const maxF   = Math.max(...last14.map(s=>s.fusions),1)
   const totalFusions = progress.sessions.reduce((a,s)=>a+s.fusions,0)
-  const modeColors:Record<ExerciseMode,string> = { stereo:'#0ea5e9',anaglyph:'linear-gradient(to top,#ef4444,#06b6d4)',saccadic:'linear-gradient(to top,#f97316,#eab308)',pursuit:'linear-gradient(to top,#8b5cf6,#06b6d4)',gabor:'linear-gradient(to top,#10b981,#0ea5e9)',hart:'linear-gradient(to top,#ec4899,#f97316)',mario:'linear-gradient(to top,#84cc16,#ef4444)',tetris:'linear-gradient(to top,#ef4444,#84cc16)',crossy:'linear-gradient(to top,#84cc16,#ef4444)',connect4:'linear-gradient(to top,#ef4444,#84cc16)' }
-  const modeTags:Record<ExerciseMode,{bg:string;c:string;t:string}> = { stereo:{bg:'#f0f9ff',c:'#0ea5e9',t:'STE'},anaglyph:{bg:'#fff1f0',c:'#ef4444',t:'ANA'},saccadic:{bg:'#fff7ed',c:'#f97316',t:'SAC'},pursuit:{bg:'#f5f3ff',c:'#8b5cf6',t:'PUR'},gabor:{bg:'#ecfdf5',c:'#10b981',t:'GAB'},hart:{bg:'#fdf2f8',c:'#ec4899',t:'HAR'},mario:{bg:'#f0fdf4',c:'#84cc16',t:'MAR'},tetris:{bg:'#fef2f2',c:'#ef4444',t:'TET'},crossy:{bg:'#f0fdf4',c:'#16a34a',t:'CRO'},connect4:{bg:'#fef2f2',c:'#ef4444',t:'C4'} }
-  const modes:ExerciseMode[] = ['stereo','anaglyph','saccadic','pursuit','gabor','hart','mario','tetris','crossy','connect4']
+  const modeColors:Record<ExerciseMode,string> = { stereo:'#0ea5e9',anaglyph:'linear-gradient(to top,#ef4444,#06b6d4)',saccadic:'linear-gradient(to top,#f97316,#eab308)',pursuit:'linear-gradient(to top,#8b5cf6,#06b6d4)',gabor:'linear-gradient(to top,#10b981,#0ea5e9)',hart:'linear-gradient(to top,#ec4899,#f97316)',mario:'linear-gradient(to top,#84cc16,#ef4444)',tetris:'linear-gradient(to top,#ef4444,#84cc16)',crossy:'linear-gradient(to top,#84cc16,#ef4444)',connect4:'linear-gradient(to top,#ef4444,#84cc16)',globos:'linear-gradient(to top,#84cc16,#ef4444)',flappy:'linear-gradient(to top,#ef4444,#84cc16)' }
+  const modeTags:Record<ExerciseMode,{bg:string;c:string;t:string}> = { stereo:{bg:'#f0f9ff',c:'#0ea5e9',t:'STE'},anaglyph:{bg:'#fff1f0',c:'#ef4444',t:'ANA'},saccadic:{bg:'#fff7ed',c:'#f97316',t:'SAC'},pursuit:{bg:'#f5f3ff',c:'#8b5cf6',t:'PUR'},gabor:{bg:'#ecfdf5',c:'#10b981',t:'GAB'},hart:{bg:'#fdf2f8',c:'#ec4899',t:'HAR'},mario:{bg:'#f0fdf4',c:'#84cc16',t:'MAR'},tetris:{bg:'#fef2f2',c:'#ef4444',t:'TET'},crossy:{bg:'#f0fdf4',c:'#16a34a',t:'CRO'},connect4:{bg:'#fef2f2',c:'#ef4444',t:'C4'},globos:{bg:'#f0fdf4',c:'#84cc16',t:'GLO'},flappy:{bg:'#fef2f2',c:'#ef4444',t:'FLA'} }
+  const modes:ExerciseMode[] = ['stereo','anaglyph','saccadic','pursuit','gabor','hart','mario','tetris','crossy','connect4','globos','flappy']
   return (
     <div className="fade-up min-h-screen bg-gradient-to-br from-sky-50 to-emerald-50 flex flex-col">
       <div className="bg-white/90 backdrop-blur-sm px-5 py-4 flex items-center gap-3 shadow-sm">
@@ -1814,6 +1849,308 @@ function Connect4View({ remaining,totalT,sessionTime,fusions,level,onHit,onMiss,
       </div>
       <div className="px-4 py-2 text-center border-t border-slate-700">
         <p className="text-xs font-bold text-slate-500">Con lentes: <span className="text-red-400">ojo rojo = fichas rojas (tu)</span> · <span className="text-green-400">ojo cyan = fichas verdes (IA)</span></p>
+      </div>
+    </div>
+  )
+}
+
+// ─── EXPLOTAR GLOBOS ──────────────────────────────────────────
+function GlobosView({ remaining,totalT,sessionTime,level,celebrate,onHit,onMiss,onEnd }:ExShared&{ celebrate:boolean; onHit:(rt:number)=>void; onMiss:()=>void; onEnd:()=>void }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const [score,setScore] = useState(0)
+  const [missed,setMissed] = useState(0)
+  const [rkey,setRkey] = useState(0)
+
+  useEffect(()=>{
+    const SW=360,SH=500
+    const canvas=canvasRef.current!
+    canvas.width=SW; canvas.height=SH
+    const ctx=canvas.getContext('2d')!
+
+    type Balloon={x:number;y:number;r:number;vy:number;col:string}
+    type Pop={x:number;y:number;r:number;col:string;life:number}
+    const balloons:Balloon[]=[]
+    const pops:Pop[]=[]
+    let scoreV=0,missedV=0,frame=0,alive=true
+
+    function spawn(){
+      const col=Math.random()>0.5?'#ef4444':'#84cc16'
+      const r=18+Math.random()*34          // 18–52 px (tamaños variados)
+      const vy=-(0.5+Math.random()*1.4)    // 0.5–1.9 velocidad variada
+      balloons.push({x:r+Math.random()*(SW-r*2),y:SH+r,r,vy,col})
+    }
+
+    function drawBalloon(b:Balloon){
+      ctx.fillStyle=b.col
+      ctx.beginPath(); ctx.ellipse(b.x,b.y,b.r,b.r*1.15,0,0,Math.PI*2); ctx.fill()
+      ctx.fillStyle='rgba(255,255,255,0.35)'
+      ctx.beginPath(); ctx.ellipse(b.x-b.r*0.28,b.y-b.r*0.32,b.r*0.28,b.r*0.22,-.4,0,Math.PI*2); ctx.fill()
+      ctx.fillStyle=b.col
+      ctx.beginPath(); ctx.ellipse(b.x,b.y+b.r*1.15,4,5,0,0,Math.PI*2); ctx.fill()
+      ctx.strokeStyle=b.col; ctx.lineWidth=1.5; ctx.globalAlpha=0.6
+      ctx.beginPath(); ctx.moveTo(b.x,b.y+b.r*1.2)
+      ctx.bezierCurveTo(b.x+10,b.y+b.r*1.5,b.x-10,b.y+b.r*2,b.x,b.y+b.r*2.4)
+      ctx.stroke(); ctx.globalAlpha=1
+    }
+
+    function drawPop(p:Pop){
+      const t=p.life/8                      // 1→0 (fade OUT)
+      ctx.globalAlpha=t
+      ctx.strokeStyle=p.col; ctx.lineWidth=2.5
+      const expand=p.r*(1+(1-t)*1.2)        // lineas se expanden hacia afuera
+      for(let i=0;i<7;i++){
+        const a=i/7*Math.PI*2
+        ctx.beginPath()
+        ctx.moveTo(p.x+Math.cos(a)*p.r*0.4, p.y+Math.sin(a)*p.r*0.4)
+        ctx.lineTo(p.x+Math.cos(a)*expand,   p.y+Math.sin(a)*expand)
+        ctx.stroke()
+      }
+      ctx.globalAlpha=1
+    }
+
+    let rafId=0
+    function loop(){
+      frame++
+      const spawnRate=Math.max(48,88-level*5)
+      if(frame%spawnRate===0) spawn()
+
+      // update balloons
+      for(const b of balloons) b.y+=b.vy
+      // escaped
+      for(const b of balloons){
+        if(b.y+b.r < -10){ missedV++; setMissed(missedV); onMiss() }
+      }
+      balloons.splice(0,balloons.length,...balloons.filter(b=>b.y+b.r>-10))
+      // update pops
+      for(const p of pops) p.life--
+      pops.splice(0,pops.length,...pops.filter(p=>p.life>0))
+
+      // draw
+      ctx.fillStyle='#0f172a'; ctx.fillRect(0,0,SW,SH)
+      for(const b of balloons) drawBalloon(b)
+      for(const p of pops)     drawPop(p)
+
+      // HUD
+      ctx.fillStyle='rgba(0,0,0,0.5)'; ctx.fillRect(0,0,SW,26)
+      ctx.fillStyle='white'; ctx.font='bold 13px monospace'; ctx.textAlign='left'
+      ctx.fillText(`★${scoreV}`,8,18)
+      ctx.textAlign='right'; ctx.fillStyle='#ef4444'
+      ctx.fillText(`✗${missedV}`,SW-8,18)
+      ctx.textAlign='center'; ctx.fillStyle='white'
+      ctx.fillText(`NV.${level}`,SW/2,18)
+
+      if(alive) rafId=requestAnimationFrame(loop)
+    }
+    rafId=requestAnimationFrame(loop)
+
+    function onTap(e:MouseEvent|TouchEvent){
+      e.preventDefault()
+      const rect=canvas.getBoundingClientRect()
+      const scaleX=SW/rect.width, scaleY=SH/rect.height
+      const pts=( 'touches' in e
+        ? Array.from((e as TouchEvent).changedTouches).map(t=>({x:(t.clientX-rect.left)*scaleX,y:(t.clientY-rect.top)*scaleY}))
+        : [{x:((e as MouseEvent).clientX-rect.left)*scaleX,y:((e as MouseEvent).clientY-rect.top)*scaleY}])
+      for(const pt of pts){
+        for(let i=balloons.length-1;i>=0;i--){
+          const b=balloons[i]
+          const dx=pt.x-b.x, dy=pt.y-b.y
+          if(Math.sqrt(dx*dx+dy*dy)<b.r*1.1){
+            pops.push({x:b.x,y:b.y,r:b.r,col:b.col,life:8})
+            balloons.splice(i,1)
+            scoreV+=10; setScore(scoreV); onHit(0); break
+          }
+        }
+      }
+    }
+    canvas.addEventListener('mousedown',onTap)
+    canvas.addEventListener('touchstart',onTap,{passive:false})
+    return()=>{ alive=false; cancelAnimationFrame(rafId); canvas.removeEventListener('mousedown',onTap); canvas.removeEventListener('touchstart',onTap) }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[rkey])
+
+  const mBtn='select-none touch-none active:scale-95 bg-slate-700 rounded-2xl font-black text-white shadow-lg border-2 border-slate-600 flex items-center justify-center'
+  return(
+    <div className="min-h-screen flex flex-col" style={{background:'#0f172a'}}>
+      <TopBar color="#84cc16" remaining={remaining} sessionTime={sessionTime} totalT={totalT} onEnd={onEnd} bg="linear-gradient(90deg,#84cc16,#ef4444)"/>
+      <StatsRow
+        left={<><span className="text-2xl font-black text-green-400">{score}</span><p className="text-xs text-gray-400 font-bold">Puntos</p></>}
+        center={<><span className="text-sm font-black text-yellow-300">Nivel {level}</span>{celebrate&&<span className="text-xs text-green-400 font-bold ml-1">+1</span>}</>}
+        right={<><span className="text-2xl font-black text-red-400">{missed}</span><p className="text-xs text-gray-400 font-bold">Escapados</p></>}
+      />
+      <div className="flex-1 flex flex-col items-center justify-center gap-2 p-2">
+        <canvas ref={canvasRef} style={{borderRadius:12,maxWidth:'100%',border:'2px solid #334155',cursor:'crosshair',touchAction:'none'}}/>
+        <button onClick={()=>setRkey(k=>k+1)} className={`${mBtn} px-6 py-2 text-sm`}>Reiniciar</button>
+      </div>
+      <div className="px-4 py-2 text-center border-t border-slate-700">
+        <p className="text-xs font-bold text-slate-500">Toca los globos para explotarlos · Con lentes: <span className="text-red-400">rojo</span> · <span className="text-green-400">verde</span></p>
+      </div>
+    </div>
+  )
+}
+
+// ─── FLAPPY BIRD ──────────────────────────────────────────────
+function FlappyView({ remaining,totalT,sessionTime,level,celebrate,onHit,onMiss,onEnd }:ExShared&{ celebrate:boolean; onHit:(rt:number)=>void; onMiss:()=>void; onEnd:()=>void }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const [score,setScore] = useState(0)
+  const [dead,setDead]   = useState(false)
+  const [started,setStarted] = useState(false)
+  const [rkey,setRkey]   = useState(0)
+  const tapRef = useRef(false)
+
+  useEffect(()=>{
+    const SW=360,SH=480,GAP=140,PW=52
+    const GRAV=0.22,FLAP=-5.2,SPD=2.0+level*0.15
+    const canvas=canvasRef.current!
+    canvas.width=SW; canvas.height=SH
+    const ctx=canvas.getContext('2d')!
+
+    type Pipe={x:number;topH:number;col:string;scored:boolean}
+    const pipes:Pipe[]=[]
+    const B={x:80,y:SH/2,vy:0,alive:true,angle:0}
+    let scoreV=0,frame=0,gameStarted=false,rafId=0
+
+    setScore(0); setDead(false); setStarted(false)
+    tapRef.current=false
+
+    function spawnPipe(){
+      const topH=60+Math.random()*(SH-GAP-120)
+      const col=Math.random()>0.5?'#ef4444':'#84cc16'
+      pipes.push({x:SW+PW,topH,col,scored:false})
+    }
+
+    function drawPipe(p:Pipe){
+      const dark=p.col==='#ef4444'?'#7f1d1d':'#14532d'
+      const lite=p.col==='#ef4444'?'#f87171':'#4ade80'
+      // top pipe
+      ctx.fillStyle=dark; ctx.fillRect(p.x+3,0,PW-6,p.topH)
+      ctx.fillStyle=p.col; ctx.fillRect(p.x,p.topH-14,PW,14)
+      ctx.fillStyle=lite; ctx.fillRect(p.x+5,0,8,p.topH-14)
+      // bottom pipe
+      const by=p.topH+GAP
+      ctx.fillStyle=dark; ctx.fillRect(p.x+3,by+14,PW-6,SH-by-14)
+      ctx.fillStyle=p.col; ctx.fillRect(p.x,by,PW,14)
+      ctx.fillStyle=lite; ctx.fillRect(p.x+5,by+14,8,SH-by-16)
+    }
+
+    function drawBird(){
+      ctx.save(); ctx.translate(B.x,B.y); ctx.rotate(B.angle)
+      // body
+      ctx.fillStyle='#fbbf24'; ctx.beginPath(); ctx.ellipse(0,0,16,12,0,0,Math.PI*2); ctx.fill()
+      // wing
+      ctx.fillStyle='#f59e0b'; ctx.beginPath(); ctx.ellipse(-4,4,10,6,-0.3,0,Math.PI*2); ctx.fill()
+      // eye
+      ctx.fillStyle='white'; ctx.beginPath(); ctx.arc(7,-3,5,0,Math.PI*2); ctx.fill()
+      ctx.fillStyle='#1e293b'; ctx.beginPath(); ctx.arc(8,-3,2.5,0,Math.PI*2); ctx.fill()
+      // beak
+      ctx.fillStyle='#f97316'; ctx.beginPath(); ctx.moveTo(12,-1); ctx.lineTo(20,2); ctx.lineTo(12,5); ctx.closePath(); ctx.fill()
+      ctx.restore()
+    }
+
+    function loop(){
+      frame++
+      if(!gameStarted){
+        // waiting for first tap — draw idle
+        ctx.fillStyle='#0f172a'; ctx.fillRect(0,0,SW,SH)
+        // ground
+        ctx.fillStyle='#84cc16'; ctx.fillRect(0,SH-30,SW,6)
+        ctx.fillStyle='#14532d'; ctx.fillRect(0,SH-24,SW,24)
+        drawBird()
+        ctx.fillStyle='rgba(255,255,255,0.9)'; ctx.font='bold 18px sans-serif'; ctx.textAlign='center'
+        ctx.fillText('Toca para empezar',SW/2,SH/2-40)
+        ctx.font='bold 13px sans-serif'; ctx.fillStyle='rgba(255,255,255,0.5)'
+        ctx.fillText('Tap / Espacio / W',SW/2,SH/2-16)
+        if(!B.alive) { rafId=requestAnimationFrame(loop); return }
+        if(tapRef.current){ gameStarted=true; setStarted(true); B.vy=FLAP; tapRef.current=false }
+        rafId=requestAnimationFrame(loop); return
+      }
+
+      if(B.alive){
+        if(tapRef.current){ B.vy=FLAP; tapRef.current=false }
+        B.vy+=GRAV; B.vy=Math.min(B.vy,7); B.y+=B.vy
+        B.angle=Math.max(-0.4,Math.min(1.1,B.vy*0.09))
+
+        // spawn pipe
+        if(frame%Math.max(80,110-level*6)===0) spawnPipe()
+        for(const p of pipes) p.x-=SPD
+
+        // score
+        for(const p of pipes){
+          if(!p.scored&&p.x+PW<B.x){ p.scored=true; scoreV++; setScore(scoreV); onHit(0) }
+        }
+
+        // collision with pipes
+        for(const p of pipes){
+          if(B.x+12>p.x&&B.x-12<p.x+PW){
+            if(B.y-12<p.topH||B.y+12>p.topH+GAP){ B.alive=false; onMiss() }
+          }
+        }
+        // ground/ceiling
+        if(B.y+12>SH-24||B.y-12<0){ B.alive=false; onMiss() }
+        pipes.splice(0,pipes.length,...pipes.filter(p=>p.x>-PW-10))
+      } else {
+        B.vy+=GRAV*1.5; B.y+=B.vy
+        if(B.y>SH+60){ setDead(true); return }
+      }
+
+      // draw
+      ctx.fillStyle='#0f172a'; ctx.fillRect(0,0,SW,SH)
+      // bg stripes
+      ctx.fillStyle='rgba(148,163,184,0.04)'
+      for(let i=0;i<SW;i+=40) ctx.fillRect(i,0,20,SH)
+      for(const p of pipes) drawPipe(p)
+      // ground
+      ctx.fillStyle='#84cc16'; ctx.fillRect(0,SH-30,SW,6)
+      ctx.fillStyle='#14532d'; ctx.fillRect(0,SH-24,SW,24)
+      drawBird()
+      // HUD
+      ctx.fillStyle='rgba(0,0,0,0.45)'; ctx.fillRect(0,0,SW,24)
+      ctx.fillStyle='white'; ctx.font='bold 13px monospace'; ctx.textAlign='center'
+      ctx.fillText(`★ ${scoreV}`,SW/2,17)
+      ctx.textAlign='right'; ctx.fillText(`NV.${level}`,SW-8,17)
+
+      rafId=requestAnimationFrame(loop)
+    }
+    rafId=requestAnimationFrame(loop)
+
+    function onTap(e:Event){ e.preventDefault(); tapRef.current=true }
+    const onKey=(e:KeyboardEvent)=>{ if(['w','W',' ','ArrowUp'].includes(e.key)){ e.preventDefault(); tapRef.current=true } }
+    canvas.addEventListener('mousedown',onTap)
+    canvas.addEventListener('touchstart',onTap,{passive:false})
+    window.addEventListener('keydown',onKey)
+    return()=>{ cancelAnimationFrame(rafId); canvas.removeEventListener('mousedown',onTap); canvas.removeEventListener('touchstart',onTap); window.removeEventListener('keydown',onKey) }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[rkey])
+
+  const mBtn='select-none touch-none active:scale-95 bg-slate-700 rounded-2xl font-black text-white shadow-lg border-2 border-slate-600 flex items-center justify-center'
+  return(
+    <div className="min-h-screen flex flex-col" style={{background:'#0f172a'}}>
+      <TopBar color="#ef4444" remaining={remaining} sessionTime={sessionTime} totalT={totalT} onEnd={onEnd} bg="linear-gradient(90deg,#ef4444,#84cc16)"/>
+      <StatsRow
+        left={<><span className="text-2xl font-black text-green-400">{score}</span><p className="text-xs text-gray-400 font-bold">Puntos</p></>}
+        center={<><span className="text-sm font-black text-yellow-300">Nivel {level}</span>{celebrate&&<span className="text-xs text-green-400 font-bold ml-1">+1</span>}</>}
+        right={<><span className="text-2xl font-black text-yellow-300">🐦</span><p className="text-xs text-gray-400 font-bold">Flappy</p></>}
+      />
+      <div className="flex-1 flex flex-col items-center justify-center gap-2 p-2">
+        <canvas ref={canvasRef} style={{borderRadius:12,maxWidth:'100%',border:'2px solid #334155',cursor:'pointer',touchAction:'none'}}/>
+        {dead&&<div className="flex flex-col items-center gap-3 fade-up">
+          <p className="text-white font-black text-xl">Game Over · {score} pts</p>
+          <button onClick={()=>{setDead(false);setRkey(k=>k+1)}} className="btn bg-red-500 text-white font-black rounded-2xl px-8 py-3 shadow-xl">Reintentar</button>
+        </div>}
+        {!dead&&!started&&<button
+          className={`${mBtn} px-8 py-3 text-base`}
+          onTouchStart={e=>{e.preventDefault();tapRef.current=true}}
+          onMouseDown={()=>tapRef.current=true}>
+          ¡VOLAR!
+        </button>}
+        {!dead&&started&&<button
+          className={`${mBtn} w-32 h-14 text-base`}
+          onTouchStart={e=>{e.preventDefault();tapRef.current=true}}
+          onMouseDown={()=>tapRef.current=true}>
+          ALETEAR
+        </button>}
+      </div>
+      <div className="px-4 py-2 text-center border-t border-slate-700">
+        <p className="text-xs font-bold text-slate-500">Tap / W / Espacio para aletear · Con lentes: <span className="text-red-400">tubos rojos</span> · <span className="text-green-400">tubos verdes</span></p>
       </div>
     </div>
   )
