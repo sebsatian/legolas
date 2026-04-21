@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 
 // ─── TYPES ───────────────────────────────────────────────────
-type View = 'calibration'|'home'|'exercise'|'anaglyph'|'saccadic'|'pursuit'|'gabor'|'hart'|'complete'|'progress'|'settings'|'glasses-info'|'mario'|'tetris'|'crossy'|'connect4'|'globos'|'flappy'
+type View = 'calibration'|'character-select'|'info'|'home'|'level-map'|'game-select'|'shop'|'exercise'|'anaglyph'|'saccadic'|'pursuit'|'gabor'|'hart'|'complete'|'progress'|'settings'|'glasses-info'|'mario'|'tetris'|'crossy'|'connect4'|'globos'|'flappy'
 type ExerciseMode = 'stereo'|'anaglyph'|'saccadic'|'pursuit'|'gabor'|'hart'|'mario'|'tetris'|'crossy'|'connect4'|'globos'|'flappy'
 
 interface SessionRecord {
@@ -14,9 +14,10 @@ interface Config {
   initialLevel:number; enableHints:boolean; pin:string
   leftEyeContrast:number; rightEyeContrast:number
   screenInches:number; screenCalibrated:boolean
+  characterId:string; patientAge:string; hasSeenIntro:boolean
 }
 interface Progress {
-  currentLevel:number; streak:number; lastSessionDate:string|null; sessions:SessionRecord[]
+  currentLevel:number; streak:number; lastSessionDate:string|null; sessions:SessionRecord[]; coins:number; ownedItems:string[]
 }
 
 const DEFAULT_CONFIG:Config = {
@@ -24,8 +25,9 @@ const DEFAULT_CONFIG:Config = {
   initialLevel:1, enableHints:true, pin:'1234',
   leftEyeContrast:1.0, rightEyeContrast:1.0,
   screenInches:10, screenCalibrated:false,
+  characterId:'cat', patientAge:'', hasSeenIntro:false,
 }
-const DEFAULT_PROGRESS:Progress = { currentLevel:1, streak:0, lastSessionDate:null, sessions:[] }
+const DEFAULT_PROGRESS:Progress = { currentLevel:1, streak:0, lastSessionDate:null, sessions:[], coins:0, ownedItems:[] }
 
 // ─── LEVEL CONFIGS (physical cm) ─────────────────────────────
 const STEREO_CM    = [{ gap:1.5,size:6.0 },{ gap:2.5,size:5.5 },{ gap:3.5,size:5.0 },{ gap:4.5,size:4.5 },{ gap:5.5,size:4.0 }]
@@ -97,6 +99,7 @@ export default function App() {
   const [celebrate,setCelebrate]     = useState(false)
   const [missCount,setMissCount]     = useState(0)
   const [contrastMsg,setContrastMsg] = useState<string|null>(null)
+  const [selectedLevel,setSelectedLevel] = useState(1)
 
   // Refs
   const fusionsRef  = useRef(0); const maxLevelRef    = useRef(1)
@@ -111,7 +114,10 @@ export default function App() {
   const setConfig   = useCallback((c:Config) => { _setConfig(c); save('vp_config',c) },[])
   const setProgress = useCallback((p:Progress) => { progressRef.current=p; _setProgress(p); save('vp_progress',p) },[])
 
-  useEffect(() => { if (!config.screenCalibrated) setView('calibration') },[])
+  useEffect(() => {
+    if (!config.screenCalibrated) setView('calibration')
+    else if (!config.hasSeenIntro) setView('character-select')
+  },[])
 
   // pxPerCm — real physical calibration
   const pxPerCm = useMemo(()=>{
@@ -280,7 +286,7 @@ export default function App() {
       avgErrorPct: errCountRef.current ? Math.round(errSumRef.current/errCountRef.current) : undefined,
       gaborAcc: gaborTotalRef.current ? Math.round(gaborHitsRef.current/gaborTotalRef.current*100) : undefined,
     }
-    setProgress({ currentLevel:levelRef.current, streak, lastSessionDate:now, sessions:[...prev.sessions,record].slice(-100) })
+    setProgress({ currentLevel:levelRef.current, streak, lastSessionDate:now, sessions:[...prev.sessions,record].slice(-100), coins:(prev.coins??0)+3, ownedItems:prev.ownedItems??[] })
     setView('complete')
   }
 
@@ -312,9 +318,14 @@ export default function App() {
         input[type=range]::-webkit-slider-thumb { -webkit-appearance:none; width:22px; height:22px; border-radius:50%; background:#0ea5e9; cursor:pointer; }
       `}</style>
 
-      {view==='calibration'  && <CalibrationView config={config} onDone={c=>{ setConfig(c); setView('home') }} />}
-      {view==='home'         && <HomeView config={config} progress={progress} onStart={startSession} onProgress={()=>setView('progress')} onSettings={()=>setView('settings')} onGlassesInfo={()=>setView('glasses-info')} />}
-      {view==='glasses-info' && <GlassesInfoView pair={PAIRS[0]} onBack={()=>setView('home')} onStart={()=>startSession('anaglyph')} />}
+      {view==='calibration'     && <CalibrationView config={config} onDone={c=>{ setConfig(c); if(!c.hasSeenIntro) setView('character-select'); else setView('home') }} />}
+      {view==='character-select'&& <CharacterSelectView config={config} onDone={c=>{ setConfig(c); setView('info') }} />}
+      {view==='info'            && <InfoView onDone={()=>{ setConfig({...config,hasSeenIntro:true}); setView('home') }} />}
+      {view==='home'            && <HomeView config={config} progress={progress} onPlay={()=>setView('level-map')} onCalibrate={()=>setView('calibration')} onSettings={()=>setView('settings')} onProgress={()=>setView('progress')} onShop={()=>setView('shop')} />}
+      {view==='level-map'       && <LevelMapView progress={progress} config={config} onSelect={lv=>{ setSelectedLevel(lv); setView('game-select') }} onBack={()=>setView('home')} />}
+      {view==='game-select'     && <GameSelectView config={config} level={selectedLevel} onStart={startSession} onBack={()=>setView('level-map')} onGlassesInfo={()=>setView('glasses-info')} onShop={()=>setView('shop')} />}
+      {view==='shop'            && <ShopView progress={progress} config={config} onBack={()=>setView('home')} onBuy={(id,cost)=>{ const p=progressRef.current; if((p.coins??0)<cost) return false; setProgress({...p,coins:p.coins-cost,ownedItems:[...(p.ownedItems??[]),id]}); return true }} />}
+      {view==='glasses-info'    && <GlassesInfoView pair={PAIRS[0]} onBack={()=>setView('game-select')} onStart={()=>startSession('anaglyph')} />}
       {view==='exercise'     && <StereoView {...sharedEx} stereoLv={stereoLv} pair={curPair} restActive={restActive} restTime={restTime} restDuration={config.restDuration} showHint={showHint} celebrate={celebrate} consDisplay={consDisplay} onFusion={handleFusion} onNoFusion={handleNoFusion} onToggleHint={()=>setShowHint(h=>!h)} onEnd={finishSession} onSkipRest={endRest} />}
       {view==='anaglyph'     && <AnaglyphView {...sharedEx} config={config} pair={curPair} restActive={restActive} restTime={restTime} restDuration={config.restDuration} showHint={showHint} celebrate={celebrate} consDisplay={consDisplay} contrastMsg={contrastMsg} onFusion={handleFusion} onNoFusion={handleNoFusion} onToggleHint={()=>setShowHint(h=>!h)} onEnd={finishSession} onSkipRest={endRest} />}
       {view==='saccadic'     && <SaccadicView {...sharedEx} config={config} pxPerCm={pxPerCm} misses={missCount} celebrate={celebrate} onHit={handleSaccadicHit} onMiss={handleSaccadicMiss} onEnd={finishSession} />}
@@ -388,83 +399,412 @@ function CalibrationView({ config, onDone }:{ config:Config; onDone:(c:Config)=>
   )
 }
 
-// ─── HOME ────────────────────────────────────────────────────
-function HomeView({ config, progress, onStart, onProgress, onSettings, onGlassesInfo }:{ config:Config; progress:Progress; onStart:(m:ExerciseMode)=>void; onProgress:()=>void; onSettings:()=>void; onGlassesInfo:()=>void }) {
-  const weekN = progress.sessions.filter(s=>new Date(s.date)>new Date(Date.now()-7*86400000)).length
-  const [showOtros,setShowOtros] = useState(false)
-
-  type Mod = [ExerciseMode,string,string,string,string]
-  const games:Mod[] = [
-    ['mario',   '🍄','Super Mario',      'Salta tubos rojos y verdes',       'linear-gradient(135deg,#84cc16,#ef4444)'],
-    ['flappy',  '🐦','Flappy Bird',      'Vuela entre tubos · toca para aletear','linear-gradient(135deg,#ef4444,#84cc16)'],
-    ['globos',  '🎈','Explotar Globos',  'Toca los globos para explotarlos', 'linear-gradient(135deg,#84cc16,#ef4444)'],
-    ['tetris',  '🟥','Tetris',           'Piezas rojas y verdes · fusion',   'linear-gradient(135deg,#ef4444,#84cc16)'],
-    ['crossy',  '🐸','Crossy Road',      'Cruza sin que te atropellen',      'linear-gradient(135deg,#16a34a,#ef4444)'],
-    ['connect4','⭕','4 en Linea',       'Conecta 4 · rojo vs verde · vs IA','linear-gradient(135deg,#ef4444,#84cc16)'],
-  ]
-  const otros:Mod[] = [
-    ['stereo',  '👁️','Mod B — Vergencia',    'Estereogramas · sin lentes',         '#0ea5e9'],
-    ['anaglyph','🕶️','Mod B+D — Anaglifo',   'Convergencia + ambliopia · lentes',  'linear-gradient(135deg,#ef4444,#06b6d4)'],
-    ['saccadic','⚡','Mod A — Sacadicos',     'Oculomotricidad · reaccion rapida',  'linear-gradient(135deg,#f97316,#eab308)'],
-    ['pursuit', '🌀','Mod A — Seguimiento',   'Smooth pursuit · seguir objeto',     'linear-gradient(135deg,#8b5cf6,#06b6d4)'],
-    ['gabor',   '🔬','Mod D — Gabor',         'Aprendizaje perceptual · orientacion','linear-gradient(135deg,#10b981,#0ea5e9)'],
-    ['hart',    '🔤','Mod A — Hart Chart',    'Lectura secuencial · cerca/lejos',   'linear-gradient(135deg,#ec4899,#f97316)'],
-  ]
-
+// ─── COIN ICON ───────────────────────────────────────────────
+function Coin({ size=20 }:{ size?:number }) {
   return (
-    <div className="fade-up min-h-screen bg-gradient-to-br from-sky-50 via-blue-50 to-emerald-50 flex flex-col items-center justify-center p-6 gap-4">
-      <div className="text-center">
-        <div className="text-6xl">👁️</div>
-        <h1 className="text-3xl font-black text-sky-600 mt-1">VisionPlay</h1>
-        <p className="text-sky-400 font-bold text-sm">Terapia Visual · Staircase 3/1</p>
-      </div>
-      <div className="bg-white rounded-3xl shadow-lg p-5 w-full max-w-sm">
-        <p className="text-lg font-black text-gray-700 text-center">Hola, <span className="text-sky-500">{config.patientName}</span>!</p>
-        <div className="flex justify-around mt-4">
-          {[{v:weekN,l:'Esta semana',c:'text-emerald-500'},{v:progress.streak,l:'Dias seguidos',c:'text-amber-500'},{v:progress.currentLevel,l:'Nivel actual',c:'text-sky-500'}].map(({v,l,c})=>(
-            <div key={l} className="text-center"><p className={`text-3xl font-black ${c}`}>{v}</p><p className="text-xs text-gray-400 font-bold mt-0.5">{l}</p></div>
-          ))}
-        </div>
-      </div>
+    <span style={{ display:'inline-flex',alignItems:'center',justifyContent:'center',width:size,height:size,borderRadius:'50%',background:'linear-gradient(135deg,#fbbf24,#d97706)',color:'#7c2d12',fontWeight:900,fontSize:size*0.52,flexShrink:0,boxShadow:'0 1px 4px rgba(0,0,0,0.25)',lineHeight:1 }}>
+      G
+    </span>
+  )
+}
 
-      {/* ── Juegos ── */}
-      <div className="w-full max-w-sm flex flex-col gap-2">
-        <p className="text-xs text-gray-400 font-bold text-center uppercase tracking-wider">Juegos</p>
-        {games.map(([mode,emoji,title,sub,bg])=>(
-          <button key={mode} onClick={()=>onStart(mode)}
-            className="btn w-full text-white font-black rounded-2xl py-3 shadow hover:opacity-90 transition-all flex items-center gap-3 px-4"
-            style={{ background:bg, boxShadow:'0 4px 16px rgba(0,0,0,0.15)' }}>
-            <span className="text-2xl">{emoji}</span>
-            <div className="text-left"><p className="text-sm leading-tight">{title}</p><p className="text-xs font-semibold opacity-80">{sub}</p></div>
+// ─── CHARACTER SELECT ─────────────────────────────────────────
+const CHARACTERS = [
+  { id:'cat',   emoji:'🐱', name:'Gato'   },
+  { id:'dog',   emoji:'🐶', name:'Perro'  },
+  { id:'rabbit',emoji:'🐰', name:'Conejo' },
+  { id:'fox',   emoji:'🦊', name:'Zorro'  },
+  { id:'bear',  emoji:'🐻', name:'Oso'    },
+  { id:'panda', emoji:'🐼', name:'Panda'  },
+]
+
+function CharacterSelectView({ config, onDone }:{ config:Config; onDone:(c:Config)=>void }) {
+  const [charId,setCharId]   = useState(config.characterId||'cat')
+  const [name,setName]       = useState(config.patientName==='Jugador'?'':config.patientName)
+  const [age,setAge]         = useState(config.patientAge||'')
+  const char = CHARACTERS.find(c=>c.id===charId)!
+  return (
+    <div className="fade-up min-h-screen flex flex-col items-center justify-center p-6 gap-5" style={{ background:'linear-gradient(160deg,#fdf4ff,#e0f2fe)' }}>
+      <div className="text-center">
+        <div className="text-7xl mb-1">{char.emoji}</div>
+        <h1 className="text-3xl font-black text-violet-600">¡Elige tu personaje!</h1>
+        <p className="text-gray-400 font-semibold text-sm mt-1">Tu compañero en la terapia</p>
+      </div>
+      <div className="grid grid-cols-3 gap-3 w-full max-w-xs">
+        {CHARACTERS.map(c=>(
+          <button key={c.id} onClick={()=>setCharId(c.id)}
+            className={`btn flex flex-col items-center gap-1 py-3 rounded-3xl transition-all font-bold text-sm border-2 ${charId===c.id?'bg-violet-500 text-white border-violet-400 shadow-lg scale-105':'bg-white text-gray-500 border-gray-100 shadow'}`}>
+            <span className="text-3xl">{c.emoji}</span>
+            <span>{c.name}</span>
           </button>
         ))}
       </div>
+      <div className="bg-white rounded-3xl shadow p-5 w-full max-w-xs flex flex-col gap-3">
+        <div>
+          <label className="text-xs font-black text-gray-400 uppercase tracking-wider">Tu nombre</label>
+          <input value={name} onChange={e=>setName(e.target.value)} placeholder="Escribe tu nombre"
+            className="w-full mt-1 rounded-2xl border border-gray-200 px-4 py-3 font-bold text-gray-700 outline-violet-400 text-sm"/>
+        </div>
+        <div>
+          <label className="text-xs font-black text-gray-400 uppercase tracking-wider">Edad</label>
+          <input value={age} onChange={e=>setAge(e.target.value)} placeholder="Ej: 8" type="number" min="4" max="18"
+            className="w-full mt-1 rounded-2xl border border-gray-200 px-4 py-3 font-bold text-gray-700 outline-violet-400 text-sm"/>
+        </div>
+        <div className="bg-violet-50 rounded-2xl p-3">
+          <p className="text-xs font-black text-violet-500 uppercase tracking-wider">Diagnóstico</p>
+          <p className="text-sm font-bold text-violet-700 mt-0.5">Ambliopía</p>
+        </div>
+      </div>
+      <button
+        onClick={()=>{ if(!name.trim()) return; onDone({...config,characterId:charId,patientName:name.trim(),patientAge:age}) }}
+        disabled={!name.trim()}
+        className="btn w-full max-w-xs bg-violet-500 text-white font-black text-lg rounded-3xl py-4 shadow-xl hover:bg-violet-400 transition-all disabled:opacity-40">
+        ¡Adelante! {char.emoji}
+      </button>
+    </div>
+  )
+}
 
-      {/* ── Otros (módulos clínicos) ── */}
-      <div className="w-full max-w-sm">
+// ─── INFO VIEW ────────────────────────────────────────────────
+function InfoView({ onDone }:{ onDone:()=>void }) {
+  const [step,setStep] = useState(0)
+  const slides = [
+    { emoji:'👁️', title:'¿Qué es la Ambliopía?', body:'La ambliopía (ojo vago) ocurre cuando un ojo no desarrolla la visión correctamente. El cerebro aprende a ignorar ese ojo. ¡Pero con entrenamiento se puede mejorar!' },
+    { emoji:'🕶️', title:'Terapia Dicóptica', body:'Mostramos imágenes distintas a cada ojo usando lentes especiales. Así el cerebro aprende a usar los dos ojos juntos. ¡Es como un videojuego para tu cerebro!' },
+    { emoji:'🎮', title:'¿Cómo funciona VisionPlay?', body:'Juegas videojuegos donde cada ojo ve colores distintos (rojo y verde). Al jugar, sin darte cuenta estás entrenando tu ojo vago para que trabaje con el otro.' },
+    { emoji:'⏱️', title:'¡Es importante constancia!', body:'Sigue las instrucciones de tu médico. Usa la app todos los días el tiempo indicado. Siempre usa tus lentes correctivos antes de ponerte los lentes de colores.' },
+  ]
+  const slide = slides[step]
+  return (
+    <div className="fade-up min-h-screen flex flex-col items-center justify-center p-6 gap-6" style={{ background:'linear-gradient(160deg,#ecfeff,#f0fdf4)' }}>
+      <div className="flex gap-2">
+        {slides.map((_,i)=>(
+          <div key={i} className={`h-2 rounded-full transition-all ${i===step?'w-8 bg-emerald-500':'w-2 bg-gray-200'}`}/>
+        ))}
+      </div>
+      <div className="bg-white rounded-3xl shadow-xl p-8 w-full max-w-sm flex flex-col items-center gap-4 text-center">
+        <div className="text-7xl">{slide.emoji}</div>
+        <h2 className="text-2xl font-black text-gray-700">{slide.title}</h2>
+        <p className="text-gray-500 font-semibold text-sm leading-relaxed">{slide.body}</p>
+      </div>
+      <div className="flex gap-3 w-full max-w-sm">
+        {step > 0 && <button onClick={()=>setStep(s=>s-1)} className="btn flex-1 bg-white text-gray-500 font-bold rounded-2xl py-3 shadow border border-gray-100">Atrás</button>}
+        <button onClick={()=>{ if(step<slides.length-1) setStep(s=>s+1); else onDone() }}
+          className="btn flex-1 bg-emerald-500 text-white font-black rounded-2xl py-3 shadow-xl hover:bg-emerald-400 transition-all">
+          {step<slides.length-1 ? 'Siguiente →' : '¡Empezar! 🚀'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ─── HOME ────────────────────────────────────────────────────
+function HomeView({ config, progress, onPlay, onCalibrate, onSettings, onProgress, onShop }:{ config:Config; progress:Progress; onPlay:()=>void; onCalibrate:()=>void; onSettings:()=>void; onProgress:()=>void; onShop:()=>void }) {
+  const char = CHARACTERS.find(c=>c.id===config.characterId) ?? CHARACTERS[0]
+  const sideItems = [
+    { icon:'👤', label:'Perfil',  action:onProgress },
+    { icon:'❓', label:'Ayuda',   action:()=>{} },
+    { icon:'✖',  label:'Salir',   action:()=>{} },
+  ]
+  return (
+    <div className="fade-up min-h-screen flex flex-col" style={{ background:'#f1f5f9' }}>
+      {/* ── Top bar ── */}
+      <div className="flex items-center justify-between px-6 py-3 bg-white border-b border-gray-200 shadow-sm">
+        <div className="flex items-center gap-2">
+          <span className="text-2xl">{char.emoji}</span>
+          <div>
+            <p className="font-black text-gray-700 text-sm leading-tight">{config.patientName}</p>
+            <p className="text-xs text-gray-400 font-semibold">Ambliopía · Nivel {progress.currentLevel}</p>
+          </div>
+        </div>
+        <h1 className="font-black text-xl text-violet-600 tracking-tight">VisionPlay</h1>
+        <div className="flex items-center gap-1.5 bg-amber-50 border border-amber-200 rounded-2xl px-3 py-1.5">
+          <Coin size={18}/>
+          <span className="font-black text-amber-700 text-sm">{progress.coins??0}</span>
+        </div>
+      </div>
+
+      {/* ── Body: sidebar + 3 columns ── */}
+      <div className="flex flex-1">
+        {/* Sidebar */}
+        <div className="flex flex-col bg-white border-r border-gray-200 shadow-sm" style={{ width:80 }}>
+          {sideItems.map((item,i)=>(
+            <button key={item.label} onClick={item.action}
+              className={`btn flex flex-col items-center justify-center gap-1 py-6 hover:bg-violet-50 transition-all font-bold text-xs text-gray-500 hover:text-violet-600 ${i>0?'border-t border-gray-100':''}`}>
+              <span className="text-2xl">{item.icon}</span>
+              <span>{item.label}</span>
+            </button>
+          ))}
+          <div className="flex-1"/>
+          <button onClick={onShop} className="btn flex flex-col items-center justify-center gap-1 py-4 border-t border-gray-100 hover:bg-amber-50 transition-all font-bold text-xs text-gray-400 hover:text-amber-600">
+            <span className="text-xl">🛒</span>
+            <span>Tienda</span>
+          </button>
+        </div>
+
+        {/* 3 main columns */}
+        <div className="flex-1 grid grid-cols-3 divide-x divide-gray-200">
+          {/* Col 1 — Calibración */}
+          <button onClick={onCalibrate}
+            className="btn flex flex-col items-center justify-center gap-4 p-8 hover:bg-white transition-all group">
+            <div className="w-24 h-24 rounded-full bg-violet-100 group-hover:bg-violet-200 flex items-center justify-center transition-all shadow-inner">
+              <span className="text-5xl">⚙️</span>
+            </div>
+            <div className="text-center">
+              <p className="font-black text-gray-700 text-base leading-tight">Calibración</p>
+              <p className="font-black text-gray-700 text-base leading-tight">de Pantalla</p>
+            </div>
+          </button>
+
+          {/* Col 2 — JUGAR */}
+          <button onClick={onPlay}
+            className="btn flex flex-col items-center justify-center gap-4 p-8 hover:bg-white transition-all group">
+            <div className="w-28 h-28 rounded-full bg-gradient-to-br from-violet-500 to-sky-500 group-hover:from-violet-400 group-hover:to-sky-400 flex items-center justify-center transition-all shadow-xl">
+              <span className="text-6xl">🎮</span>
+            </div>
+            <div className="bg-gradient-to-r from-violet-600 to-sky-500 text-white font-black text-xl rounded-2xl px-8 py-2 shadow-lg tracking-wide">
+              JUGAR
+            </div>
+          </button>
+
+          {/* Col 3 — Parámetros */}
+          <button onClick={onSettings}
+            className="btn flex flex-col items-center justify-center gap-4 p-8 hover:bg-white transition-all group">
+            <div className="w-24 h-24 rounded-full bg-emerald-100 group-hover:bg-emerald-200 flex items-center justify-center transition-all shadow-inner">
+              <span className="text-5xl">📏</span>
+            </div>
+            <div className="text-center">
+              <p className="font-black text-gray-700 text-base leading-tight">Modificar</p>
+              <p className="font-black text-gray-700 text-base leading-tight">parámetros</p>
+              <p className="font-black text-gray-700 text-base leading-tight">terapia</p>
+            </div>
+          </button>
+        </div>
+      </div>
+
+      {/* ── Stats footer ── */}
+      <div className="flex border-t border-gray-200 bg-white divide-x divide-gray-200">
+        {[{v:progress.streak,l:'Días seguidos',e:'🔥'},{v:progress.currentLevel,l:'Nivel actual',e:'⭐'},{v:progress.sessions.length,l:'Sesiones totales',e:'🏆'},{v:progress.coins??0,l:'Monedas',coin:true}].map(({v,l,e,coin})=>(
+          <div key={l} className="flex-1 flex items-center justify-center gap-2 py-3">
+            {coin ? <Coin size={20}/> : <span className="text-xl">{e}</span>}
+            <div><p className="font-black text-gray-700 text-lg leading-none">{v}</p><p className="text-xs text-gray-400 font-semibold">{l}</p></div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ─── LEVEL MAP ───────────────────────────────────────────────
+function LevelMapView({ progress, config, onSelect, onBack }:{ progress:Progress; config:Config; onSelect:(lv:number)=>void; onBack:()=>void }) {
+  const maxUnlocked = Math.max(progress.currentLevel, 1)
+  const char = CHARACTERS.find(c=>c.id===config.characterId) ?? CHARACTERS[0]
+  const levels = [1,2,3,4,5,6,7,8,9,10]
+  const positions = [
+    { x:50, y:88 },{ x:30, y:76 },{ x:60, y:64 },{ x:75, y:52 },{ x:45, y:42 },
+    { x:25, y:32 },{ x:55, y:22 },{ x:70, y:14 },{ x:40, y:8  },{ x:20, y:2  },
+  ]
+  return (
+    <div className="fade-up min-h-screen flex flex-col" style={{ background:'linear-gradient(180deg,#1e3a5f,#0f172a)' }}>
+      <div className="px-5 py-4 flex items-center gap-3">
+        <button onClick={onBack} className="btn text-white/60 hover:text-white font-black text-lg transition-all">← Volver</button>
+        <h2 className="font-black text-xl text-white flex-1 text-center">Mapa de Niveles</h2>
+        <div className="text-white font-black flex items-center gap-1.5"><Coin size={20}/><span>{progress.coins??0}</span></div>
+      </div>
+      <div className="flex-1 relative overflow-hidden" style={{ minHeight:500 }}>
+        <svg className="absolute inset-0 w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+          <polyline points={positions.map(p=>`${p.x},${p.y}`).join(' ')} fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth="2" strokeDasharray="3,2"/>
+        </svg>
+        {levels.map((lv,i)=>{
+          const pos = positions[i]
+          const unlocked = lv <= maxUnlocked
+          const isCurrent = lv === maxUnlocked
+          return (
+            <button key={lv}
+              onClick={()=>{ if(unlocked) onSelect(lv) }}
+              disabled={!unlocked}
+              style={{ position:'absolute', left:`${pos.x}%`, top:`${pos.y}%`, transform:'translate(-50%,-50%)' }}
+              className={`btn flex flex-col items-center gap-1 transition-all ${unlocked?'hover:scale-110':''}`}>
+              {isCurrent && <div className="text-2xl" style={{ animation:'bounce 1s infinite', filter:'drop-shadow(0 0 8px rgba(250,204,21,0.9))' }}>{char.emoji}</div>}
+              <div className={`w-14 h-14 rounded-full flex items-center justify-center font-black text-lg shadow-xl border-4 transition-all
+                ${isCurrent?'bg-gradient-to-br from-emerald-400 to-sky-500 border-white text-white scale-110':
+                  unlocked?'bg-gradient-to-br from-yellow-400 to-amber-500 border-yellow-300 text-white':'bg-gray-700 border-gray-600 text-gray-500'}`}>
+                {unlocked ? lv : '🔒'}
+              </div>
+              {unlocked && <div className="bg-yellow-400 text-yellow-900 rounded-full px-2 py-0.5 text-xs font-black flex items-center gap-0.5"><Coin size={13}/><span>×3</span></div>}
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// ─── GAME SELECT ─────────────────────────────────────────────
+function GameSelectView({ config, level, onStart, onBack, onGlassesInfo, onShop }:{ config:Config; level:number; onStart:(m:ExerciseMode)=>void; onBack:()=>void; onGlassesInfo:()=>void; onShop:()=>void }) {
+  const char = CHARACTERS.find(c=>c.id===config.characterId) ?? CHARACTERS[0]
+  type G = { mode:ExerciseMode; emoji:string; name:string; bg:string }
+  const games:G[] = [
+    { mode:'flappy',   emoji:'🐦', name:'Flappy Bird',    bg:'linear-gradient(135deg,#ef4444,#84cc16)' },
+    { mode:'connect4', emoji:'⭕', name:'4 en Línea',     bg:'linear-gradient(135deg,#ef4444,#84cc16)' },
+    { mode:'tetris',   emoji:'🟥', name:'Tetris',         bg:'linear-gradient(135deg,#ef4444,#06b6d4)' },
+    { mode:'mario',    emoji:'🍄', name:'Super Mario',    bg:'linear-gradient(135deg,#84cc16,#ef4444)' },
+    { mode:'crossy',   emoji:'🐸', name:'Crossy Road',    bg:'linear-gradient(135deg,#16a34a,#ef4444)' },
+    { mode:'globos',   emoji:'🎈', name:'Explotar Globos',bg:'linear-gradient(135deg,#84cc16,#ef4444)' },
+    { mode:'stereo',   emoji:'👁️', name:'Vergencia',      bg:'linear-gradient(135deg,#0ea5e9,#7c3aed)' },
+  ]
+  const otros:G[] = [
+    { mode:'anaglyph', emoji:'🕶️', name:'Anaglifo',       bg:'linear-gradient(135deg,#ef4444,#06b6d4)' },
+    { mode:'saccadic', emoji:'⚡', name:'Sacádicos',      bg:'linear-gradient(135deg,#f97316,#eab308)' },
+    { mode:'pursuit',  emoji:'🌀', name:'Seguimiento',    bg:'linear-gradient(135deg,#8b5cf6,#06b6d4)' },
+    { mode:'gabor',    emoji:'🔬', name:'Gabor',          bg:'linear-gradient(135deg,#10b981,#0ea5e9)' },
+    { mode:'hart',     emoji:'🔤', name:'Hart Chart',     bg:'linear-gradient(135deg,#ec4899,#f97316)' },
+  ]
+  const [showOtros,setShowOtros] = useState(false)
+  return (
+    <div className="fade-up min-h-screen flex flex-col" style={{ background:'linear-gradient(160deg,#f0f9ff,#fdf4ff)' }}>
+      <div className="px-5 py-4 flex items-center gap-3 bg-white/80 shadow-sm">
+        <button onClick={onBack} className="btn text-gray-400 hover:text-gray-600 font-black text-lg transition-all">←</button>
+        <div className="flex-1 text-center">
+          <p className="font-black text-lg text-gray-700">{char.emoji} Nivel {level}</p>
+        </div>
+        <button onClick={onShop} className="btn flex items-center gap-1 font-black text-amber-500 bg-amber-50 rounded-2xl px-3 py-1 hover:bg-amber-100 transition-all">
+          <span>🛒</span><span className="text-sm">Tienda</span>
+        </button>
+      </div>
+      <div className="flex-1 p-5 flex flex-col gap-4">
+        <h2 className="text-2xl font-black text-gray-700 text-center">¡Selecciona el juego!</h2>
+        <div className="grid grid-cols-2 gap-3">
+          {games.map(g=>(
+            <button key={g.mode} onClick={()=>g.mode==='anaglyph'?onGlassesInfo():onStart(g.mode)}
+              className="btn text-white font-black rounded-3xl py-5 shadow-lg hover:opacity-90 transition-all flex flex-col items-center gap-2"
+              style={{ background:g.bg, boxShadow:'0 4px 20px rgba(0,0,0,0.15)' }}>
+              <span className="text-4xl">{g.emoji}</span>
+              <span className="text-sm leading-tight text-center">{g.name}</span>
+            </button>
+          ))}
+        </div>
         <button onClick={()=>setShowOtros(v=>!v)}
-          className="w-full flex items-center justify-between px-4 py-2 rounded-2xl bg-white shadow border border-gray-100 hover:bg-gray-50 transition-all">
-          <span className="text-xs font-black text-gray-400 uppercase tracking-wider">Otros módulos</span>
-          <span className="text-gray-400 text-sm font-bold">{showOtros ? '▲' : '▼'}</span>
+          className="w-full flex items-center justify-between px-4 py-3 rounded-2xl bg-white shadow border border-gray-100 hover:bg-gray-50 transition-all">
+          <span className="text-xs font-black text-gray-400 uppercase tracking-wider">Módulos clínicos</span>
+          <span className="text-gray-400 text-sm font-bold">{showOtros?'▲':'▼'}</span>
         </button>
         {showOtros && (
-          <div className="flex flex-col gap-2 mt-2">
-            {otros.map(([mode,emoji,title,sub,bg])=>(
-              <button key={mode} onClick={()=>mode==='anaglyph'?onGlassesInfo():onStart(mode)}
-                className="btn w-full text-white font-black rounded-2xl py-3 shadow hover:opacity-90 transition-all flex items-center gap-3 px-4"
-                style={{ background:bg, boxShadow:'0 4px 16px rgba(0,0,0,0.15)' }}>
-                <span className="text-2xl">{emoji}</span>
-                <div className="text-left"><p className="text-sm leading-tight">{title}</p><p className="text-xs font-semibold opacity-80">{sub}</p></div>
+          <div className="grid grid-cols-2 gap-3">
+            {otros.map(g=>(
+              <button key={g.mode} onClick={()=>g.mode==='anaglyph'?onGlassesInfo():onStart(g.mode)}
+                className="btn text-white font-black rounded-3xl py-4 shadow-lg hover:opacity-90 transition-all flex flex-col items-center gap-1"
+                style={{ background:g.bg }}>
+                <span className="text-3xl">{g.emoji}</span>
+                <span className="text-xs leading-tight text-center">{g.name}</span>
               </button>
             ))}
           </div>
         )}
       </div>
-      <div className="flex gap-3 w-full max-w-sm">
-        <button onClick={onProgress} className="btn flex-1 bg-white text-sky-600 font-bold rounded-2xl py-3 shadow border border-sky-100 hover:bg-sky-50 transition-all">Mi Progreso</button>
-        <button onClick={onSettings} className="btn bg-white text-gray-500 font-bold rounded-2xl py-3 px-5 shadow border border-gray-100 hover:bg-gray-50 transition-all">⚙️</button>
+    </div>
+  )
+}
+
+// ─── SHOP ────────────────────────────────────────────────────
+function ShopView({ progress, config, onBack, onBuy }:{ progress:Progress; config:Config; onBack:()=>void; onBuy:(id:string,cost:number)=>boolean }) {
+  const [tab,setTab] = useState<'vestuario'|'equipo'|'accesorios'>('vestuario')
+  const [flash,setFlash] = useState<string|null>(null)
+  const char = CHARACTERS.find(c=>c.id===config.characterId) ?? CHARACTERS[0]
+  const owned = progress.ownedItems ?? []
+
+  const tabs:{id:'vestuario'|'equipo'|'accesorios'; label:string; icon:string}[] = [
+    { id:'vestuario', label:'Vestuario', icon:'👕' },
+    { id:'equipo',    label:'Equipo',    icon:'⚔️' },
+    { id:'accesorios',label:'Accesorios',icon:'💎' },
+  ]
+  const items:{[k:string]:{id:string;emoji:string;name:string;cost:number}[]} = {
+    vestuario: [
+      {id:'mago',   emoji:'🎩',name:'Sombrero mago', cost:9 },
+      {id:'corona', emoji:'👑',name:'Corona',         cost:15},
+      {id:'gorra',  emoji:'🧢',name:'Gorra roja',     cost:6 },
+      {id:'casco',  emoji:'🪖',name:'Casco',          cost:12},
+    ],
+    equipo: [
+      {id:'lentes', emoji:'🕶️',name:'Lentes de sol',  cost:8 },
+      {id:'telesc', emoji:'🔭',name:'Telescopio',      cost:20},
+      {id:'diana',  emoji:'🎯',name:'Diana',           cost:10},
+      {id:'escudo', emoji:'🛡️',name:'Escudo',          cost:14},
+    ],
+    accesorios: [
+      {id:'estrella',emoji:'🌟',name:'Estrella dorada',cost:5 },
+      {id:'mono',    emoji:'🎀',name:'Moño',           cost:7 },
+      {id:'medalla', emoji:'🏅',name:'Medalla',        cost:12},
+      {id:'confetti',emoji:'🎪',name:'Confetti',       cost:8 },
+    ],
+  }
+
+  function handleBuy(id:string, cost:number, name:string) {
+    const ok = onBuy(id, cost)
+    setFlash(ok ? `✅ ¡Compraste ${name}!` : '❌ Monedas insuficientes')
+    setTimeout(()=>setFlash(null), 2000)
+  }
+
+  return (
+    <div className="fade-up min-h-screen flex flex-col" style={{ background:'linear-gradient(160deg,#fdf4ff,#f0f9ff)' }}>
+      {/* Header */}
+      <div className="px-5 py-4 flex items-center gap-3 bg-white/80 shadow-sm">
+        <h2 className="font-black text-xl text-gray-700 flex-1 text-center">Tienda</h2>
+        <div className="flex items-center gap-1.5 font-black text-amber-700 text-lg"><Coin size={22}/><span>{progress.coins??0}</span></div>
       </div>
-      <p className="text-xs text-gray-300 text-center max-w-xs font-semibold">Complemento a terapia visual profesional. No sustituye supervision medica.</p>
+
+      {/* Flash message */}
+      {flash && (
+        <div className="mx-4 mt-3 bg-white rounded-2xl shadow px-4 py-2 text-center font-black text-sm text-gray-700 fade-up">{flash}</div>
+      )}
+
+      {/* Personaje */}
+      <div className="flex flex-col items-center pt-4 pb-2">
+        <div className="text-7xl">{char.emoji}</div>
+        <p className="font-black text-gray-500 text-sm mt-1">{config.patientName}</p>
+      </div>
+
+      {/* Items */}
+      <div className="flex-1 p-4 overflow-y-auto pb-28">
+        <div className="grid grid-cols-2 gap-3 max-w-sm mx-auto">
+          {items[tab].map(item=>{
+            const isOwned = owned.includes(item.id)
+            const canAfford = (progress.coins??0) >= item.cost
+            return (
+              <div key={item.id} className={`bg-white rounded-3xl shadow p-4 flex flex-col items-center gap-2 border-2 transition-all ${isOwned?'border-emerald-300':'border-gray-100'}`}>
+                <div className="text-5xl">{item.emoji}</div>
+                <p className="font-black text-gray-700 text-sm text-center">{item.name}</p>
+                {isOwned
+                  ? <div className="bg-emerald-100 text-emerald-600 font-black rounded-2xl px-4 py-2 text-xs flex items-center gap-1"><span>✅</span><span>Tienes</span></div>
+                  : <button onClick={()=>handleBuy(item.id, item.cost, item.name)}
+                      className={`btn font-black rounded-2xl px-4 py-2 text-xs shadow flex items-center gap-1 transition-all
+                        ${canAfford?'bg-amber-400 text-amber-900 hover:bg-amber-300':'bg-gray-200 text-gray-400 cursor-not-allowed'}`}>
+                      <Coin size={14}/><span>{item.cost}</span>
+                    </button>
+                }
+              </div>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Bottom tab bar */}
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t-2 border-gray-200 flex" style={{ boxShadow:'0 -4px 20px rgba(0,0,0,0.08)' }}>
+        {tabs.map((t,i)=>(
+          <button key={t.id} onClick={()=>setTab(t.id)}
+            className={`btn flex-1 flex flex-col items-center py-3 gap-1 transition-all font-black text-xs
+              ${tab===t.id?'text-violet-600 bg-violet-50':'text-gray-400'}
+              ${i>0?'border-l border-gray-200':''}`}>
+            <span className="text-2xl">{t.icon}</span>
+            <span>{t.label}</span>
+          </button>
+        ))}
+        <button onClick={onBack}
+          className="btn flex-1 flex flex-col items-center py-3 gap-1 text-gray-400 hover:text-red-500 transition-all font-black text-xs border-l border-gray-200">
+          <span className="text-2xl">🚪</span>
+          <span>Salir</span>
+        </button>
+      </div>
     </div>
   )
 }
@@ -1403,7 +1743,7 @@ function MarioView({ remaining,totalT,sessionTime,level,celebrate,onHit,onMiss,o
       ctx.fillStyle='rgba(0,0,0,0.45)';ctx.fillRect(0,0,SW,22)
       ctx.fillStyle='white';ctx.font='bold 12px monospace'
       ctx.textAlign='left';ctx.fillText(`★${scoreV}`,8,16)
-      ctx.textAlign='center';ctx.fillText(`🪙${coinsV}`,SW/2,16)
+      ctx.textAlign='center';ctx.fillText(`G${coinsV}`,SW/2,16)
       ctx.textAlign='right';ctx.fillText(`NV.${level}`,SW-6,16)
 
       if(running||P.dead)rafId=requestAnimationFrame(loop)
